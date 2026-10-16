@@ -110,14 +110,22 @@
   border-radius: 9999px;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  cursor: default;
+  cursor: pointer;
   user-select: none;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  color: inherit;
 }
 
 .navbar-clock-capsule:hover {
   border-color: #cbd5e1;
-  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
-  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -2px rgba(15, 23, 42, 0.09);
+  transform: translateY(-1.5px) scale(1.02);
+}
+
+.navbar-clock-capsule:active {
+  transform: translateY(0) scale(0.98);
 }
 
 /* Jam Analog Mini */
@@ -477,16 +485,6 @@
   color: #0d9488;
 }
 
-.module-badge {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #1e3a5f;
-  background: #f0f7ff;
-  border: 1px solid #dbeafe;
-  padding: 4px 10px;
-  border-radius: 9999px;
-}
-
 .module-card h3 {
   margin: 0 0 8px;
   font-size: 16px;
@@ -835,4 +833,238 @@
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===================================================
+   iOS STYLE CLOCK POPOUT MODAL (DYNAMIC ISLAND VIBE)
+   =================================================== */
+.clock-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  animation: iosFadeIn 0.22s ease-out forwards;
+}
+
+@keyframes iosFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.clock-modal-card {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  background: #ffffff;
+  border-radius: 28px;
+  padding: 30px 24px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow:
+    0 25px 60px -15px rgba(15, 23, 42, 0.3),
+    0 0 0 1px rgba(226, 232, 240, 0.9);
+  animation: iosPopout 0.36s cubic-bezier(0.175, 0.885, 0.32, 1.15) forwards;
+  transform-origin: center center;
+}
+
+@keyframes iosPopout {
+  0% {
+    opacity: 0;
+    transform: scale(0.68) translateY(-24px);
+  }
+  75% {
+    opacity: 1;
+    transform: scale(1.02) translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Tombol Tutup X */
+.clock-modal-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clock-modal-close-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.clock-modal-close-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+  transform: scale(1.08);
+}
+
+/* Jam Analog Besar Popout */
+.popout-clock-face {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  background: #ffffff;
+  border-radius: 50%;
+  border: 2.5px solid #cbd5e1;
+  box-shadow:
+    0 0 0 6px #f8fafc,
+    0 8px 24px -4px rgba(15, 23, 42, 0.08),
+    inset 0 2px 4px rgba(15, 23, 42, 0.04);
+  margin-bottom: 20px;
+}
+
+/* Angka Jam 12, 3, 6, 9 */
+.popout-num {
+  position: absolute;
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.popout-num.num-12 {
+  top: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.popout-num.num-6 {
+  bottom: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.popout-num.num-3 {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.popout-num.num-9 {
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Ticks Jam Lainnya (1, 2, 4, 5, 7, 8, 10, 11) */
+.popout-tick {
+  position: absolute;
+  width: 1.5px;
+  height: 5px;
+  background: #94a3b8;
+  top: 50%;
+  left: 50%;
+  transform-origin: 50% 50%;
+  border-radius: 1px;
+}
+
+.popout-tick.tick-1 { transform: translate(-50%, -50%) rotate(30deg) translateY(-58px); }
+.popout-tick.tick-2 { transform: translate(-50%, -50%) rotate(60deg) translateY(-58px); }
+.popout-tick.tick-4 { transform: translate(-50%, -50%) rotate(120deg) translateY(-58px); }
+.popout-tick.tick-5 { transform: translate(-50%, -50%) rotate(150deg) translateY(-58px); }
+.popout-tick.tick-7 { transform: translate(-50%, -50%) rotate(210deg) translateY(-58px); }
+.popout-tick.tick-8 { transform: translate(-50%, -50%) rotate(240deg) translateY(-58px); }
+.popout-tick.tick-10 { transform: translate(-50%, -50%) rotate(300deg) translateY(-58px); }
+.popout-tick.tick-11 { transform: translate(-50%, -50%) rotate(330deg) translateY(-58px); }
+
+/* Jarum Popout */
+.popout-hand {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform-origin: 50% 100%;
+  border-radius: 3px;
+}
+
+.popout-hand-hour {
+  width: 3.5px;
+  height: 36px;
+  background: #0f172a;
+  z-index: 2;
+}
+
+.popout-hand-minute {
+  width: 2.2px;
+  height: 48px;
+  background: #334155;
+  z-index: 3;
+}
+
+.popout-hand-second {
+  width: 1.2px;
+  height: 56px;
+  background: #1e3a5f;
+  z-index: 4;
+  transition: transform 0.2s cubic-bezier(0.4, 2.08, 0.55, 0.44);
+}
+
+.popout-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  background: #0f172a;
+  border: 1.5px solid #ffffff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+}
+
+/* Waktu Digital & Tanggal Popout */
+.popout-time-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.popout-digital-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 26px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.popout-tz-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1e3a5f;
+  background: #e0f2fe;
+  padding: 2px 6px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+}
+
+.popout-full-date {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #64748b;
+  text-align: center;
 }

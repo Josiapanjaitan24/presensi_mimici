@@ -7,11 +7,22 @@ export default function AdminDashboard() {
   );
 
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isClockModalOpen, setIsClockModalOpen] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setIsClockModalOpen(false);
+    }
+    if (isClockModalOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isClockModalOpen]);
 
   function handleLogout() {
     localStorage.removeItem("token");
@@ -46,7 +57,6 @@ export default function AdminDashboard() {
     {
       title: "Data Karyawan",
       desc: "Kelola data induk, NIP, akun pengguna, dan penempatan cabang.",
-      badge: "148 Karyawan",
       color: "blue",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -57,8 +67,7 @@ export default function AdminDashboard() {
     },
     {
       title: "Data Cabang",
-      desc: "Atur informasi dan radius GPS 6 cabang operasional Mimici.",
-      badge: "6 Cabang Aktif",
+      desc: "Atur informasi dan radius GPS cabang operasional Mimici.",
       color: "emerald",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -70,7 +79,6 @@ export default function AdminDashboard() {
     {
       title: "Jadwal & Shift Kerja",
       desc: "Atur rotasi kerja, shift pagi/malam, dan kalender operasional.",
-      badge: "3 Shift Kerja",
       color: "indigo",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -84,7 +92,6 @@ export default function AdminDashboard() {
     {
       title: "Monitoring Presensi",
       desc: "Pantau log absensi harian, foto presensi, dan status kehadiran real-time.",
-      badge: "Live Monitoring",
       color: "amber",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -96,7 +103,6 @@ export default function AdminDashboard() {
     {
       title: "Pengajuan Izin & Sakit",
       desc: "Tinjau, setujui, atau tolak permohonan izin karyawan berserta bukti surat.",
-      badge: "4 Perlu Review",
       color: "rose",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -108,7 +114,6 @@ export default function AdminDashboard() {
     {
       title: "Laporan & Rekap",
       desc: "Unduh rekap kehadiran bulanan, keterlambatan, dan data potongan gaji.",
-      badge: "Ekspor PDF/Excel",
       color: "teal",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -146,10 +151,14 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Center: Precision Clock & Date Capsule */}
-        <div
+        {/* Center: Precision Clock & Date Capsule (Clickable for iOS-style popout) */}
+        <button
+          type="button"
           className="navbar-clock-capsule"
-          title={`Waktu Server Presensi: ${tanggalHariIni} • ${jamSekarang} WIB`}
+          onClick={() => setIsClockModalOpen(true)}
+          title="Klik untuk membuka jam detail"
+          aria-haspopup="dialog"
+          aria-expanded={isClockModalOpen}
         >
           <div className="capsule-analog-clock" aria-label="Jam Analog">
             {/* Angka penanda jam (12, 3, 6, 9) */}
@@ -186,7 +195,7 @@ export default function AdminDashboard() {
             </div>
             <span className="capsule-date">{tanggalHariIni}</span>
           </div>
-        </div>
+        </button>
 
         {/* Unified Admin Account Capsule */}
         <div className="navbar-account-capsule">
@@ -219,15 +228,12 @@ export default function AdminDashboard() {
       {/* Main Content Area */}
       <main className="admin-main">
         {/* Management Modules */}
-
-        {/* Management Modules */}
         <section className="modules-section">
           <div className="modules-grid">
             {modules.map((mod, idx) => (
               <article key={idx} className="module-card">
                 <div className="module-card-top">
                   <div className={`module-icon icon-${mod.color}`}>{mod.icon}</div>
-                  <span className="module-badge">{mod.badge}</span>
                 </div>
                 <h3>{mod.title}</h3>
                 <p>{mod.desc}</p>
@@ -251,6 +257,74 @@ export default function AdminDashboard() {
       <footer className="admin-footer">
         <p>Presensi Mimici &copy; {new Date().getFullYear()} &middot; Sistem Manajemen Kehadiran Multi-Cabang</p>
       </footer>
+
+      {/* iOS Style Clock Popout Modal */}
+      {isClockModalOpen && (
+        <div
+          className="clock-modal-backdrop"
+          onClick={() => setIsClockModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="clock-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              className="clock-modal-close-btn"
+              onClick={() => setIsClockModalOpen(false)}
+              aria-label="Tutup"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+
+            {/* Apple / Swiss Style Large Analog Clock */}
+            <div className="popout-clock-face">
+              {/* Dial markings */}
+              <span className="popout-num num-12">12</span>
+              <span className="popout-num num-3">3</span>
+              <span className="popout-num num-6">6</span>
+              <span className="popout-num num-9">9</span>
+
+              {/* Ticks for other hours */}
+              <span className="popout-tick tick-1" />
+              <span className="popout-tick tick-2" />
+              <span className="popout-tick tick-4" />
+              <span className="popout-tick tick-5" />
+              <span className="popout-tick tick-7" />
+              <span className="popout-tick tick-8" />
+              <span className="popout-tick tick-10" />
+              <span className="popout-tick tick-11" />
+
+              {/* Hands */}
+              <div
+                className="popout-hand popout-hand-hour"
+                style={{ transform: `translateX(-50%) rotate(${hourDeg}deg)` }}
+              />
+              <div
+                className="popout-hand popout-hand-minute"
+                style={{ transform: `translateX(-50%) rotate(${minDeg}deg)` }}
+              />
+              <div
+                className="popout-hand popout-hand-second"
+                style={{ transform: `translateX(-50%) rotate(${secDeg}deg)` }}
+              />
+              <div className="popout-pin" />
+            </div>
+
+            {/* Digital Time & Full Date */}
+            <div className="popout-time-display">
+              <span className="popout-digital-time">{jamSekarang}</span>
+              <span className="popout-tz-badge">WIB</span>
+            </div>
+            <p className="popout-full-date">{tanggalHariIni}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
