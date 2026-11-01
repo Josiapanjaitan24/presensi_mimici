@@ -1,9 +1,10 @@
 
 import { useState, useEffect } from "react";
 import { login } from "../services/authService";
+import { saveSessionToken } from "../services/api";
 import "./Login.css";
 
-export default function Login() {
+export default function Login({ role = "karyawan", sessionError = "" }) {
   const [identitas, setIdentitas] = useState("");
   const [kataSandi, setKataSandi] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -11,6 +12,10 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    if (sessionError) setError(sessionError);
+  }, [sessionError]);
 
   // Update jam analog setiap detik
   useEffect(() => {
@@ -34,17 +39,13 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const data = await login(identitas, kataSandi);
+      const data = await login(identitas, kataSandi, role);
 
       if (!data.token || !data.pengguna) {
         throw new Error("Respons login dari server tidak lengkap.");
       }
 
-      localStorage.setItem("token", data.token);
-      localStorage.setItem(
-        "pengguna",
-        JSON.stringify(data.pengguna),
-      );
+      saveSessionToken(data.pengguna.peran, data.token, data.pengguna);
 
       if (ingatSaya) {
         localStorage.setItem("ingat_identitas", identitas);
@@ -108,10 +109,10 @@ export default function Login() {
         {/* Card */}
         <section className="login-card">
           <div className="login-brand">
-            <p className="login-eyebrow">PORTAL KARYAWAN</p>
+            <p className="login-eyebrow">PORTAL {role === "admin" ? "ADMIN" : "KARYAWAN"}</p>
             <h1>Selamat Datang</h1>
             <p className="login-description">
-              Silakan masuk untuk melakukan presensi.
+              {role === "admin" ? "Kelola sistem presensi Mimici." : "Silakan masuk untuk melakukan presensi."}
             </p>
           </div>
 

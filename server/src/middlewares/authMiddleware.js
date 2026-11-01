@@ -1,7 +1,8 @@
 
 import jwt from "jsonwebtoken";
+import { pool } from "../config/database.js";
 
-export function autentikasi(req, res, next) {
+export async function autentikasi(req, res, next) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ")
     ? header.slice(7)
@@ -22,16 +23,33 @@ export function autentikasi(req, res, next) {
   }
 
   try {
-    req.pengguna = jwt.verify(token, process.env.JWT_SECRET, {
+    const payload = jwt.verify(token, process.env.JWT_SECRET, {
       algorithms: ["HS256"],
     });
 
+    const result = await pool.query(
+      "SELECT id_pengguna, peran, status_akun FROM pengguna WHERE id_pengguna = $1",
+      [payload.id_pengguna],
+    );
+    const pengguna = result.rows[0];
+    if (!pengguna || pengguna.status_akun !== "aktif" || pengguna.peran !== payload.peran) {
+      return res.status(401).json({
+        success: false,
+        message: "Sesi tidak valid atau akun sudah tidak aktif.",
+      });
+    }
+
+    req.pengguna = { ...payload, ...pengguna, id_pengguna: pengguna.id_pengguna.toString() };
+
     next();
-  } catch {
-    return res.status(401).json({
-      success: false,
-      message: "Token tidak valid atau sudah kedaluwarsa.",
-    });
+  } catch (error) {
+    if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        success: false,
+        message: "Sesi login Anda telah berakhir (60 menit). Silakan login kembali.",
+      });
+    }
+    return next(error);
   }
 }
 
@@ -50,3 +68,6 @@ export function hanyaPeran(...peranDiizinkan) {
     next();
   };
 }
+
+export const hanyaAdmin = hanyaPeran("admin");
+export const hanyaKaryawan = hanyaPeran("karyawan");

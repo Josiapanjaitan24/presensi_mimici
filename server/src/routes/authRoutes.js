@@ -9,7 +9,7 @@ const router = Router();
 
 router.post("/login", async (req, res) => {
   try {
-    const { identitas, kata_sandi } = req.body ?? {};
+    const { identitas, kata_sandi, peran } = req.body ?? {};
 
     if (
       typeof identitas !== "string" ||
@@ -23,6 +23,10 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    if (peran !== undefined && !["admin", "karyawan"].includes(peran)) {
+      return res.status(400).json({ success: false, message: "Peran login tidak valid." });
+    }
+
     if (!process.env.JWT_SECRET) {
       console.error("JWT_SECRET belum dikonfigurasi.");
       return res.status(500).json({
@@ -32,13 +36,16 @@ router.post("/login", async (req, res) => {
     }
 
     const result = await pool.query(
-      `SELECT id_pengguna, nama_pengguna, email,
+      `SELECT u.id_pengguna, u.nama_pengguna, u.email,
               kata_sandi_hash, peran, status_akun
-       FROM pengguna
-       WHERE LOWER(nama_pengguna) = LOWER($1)
-          OR LOWER(email) = LOWER($1)
+       FROM pengguna u
+       LEFT JOIN karyawan k ON k.id_pengguna = u.id_pengguna
+       WHERE (LOWER(u.nama_pengguna) = LOWER($1)
+          OR LOWER(u.email) = LOWER($1)
+          OR LOWER(k.nomor_induk) = LOWER($1))
+          AND ($2::text IS NULL OR u.peran = $2)
        LIMIT 1`,
-      [identitas.trim()],
+      [identitas.trim(), peran || null],
     );
 
     const pengguna = result.rows[0];
@@ -76,7 +83,7 @@ router.post("/login", async (req, res) => {
       },
       process.env.JWT_SECRET,
       {
-        expiresIn: process.env.JWT_EXPIRES_IN || "8h",
+        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
         algorithm: "HS256",
       },
     );
@@ -134,6 +141,56 @@ router.get("/me", autentikasi, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Gagal mengambil profil pengguna.",
+    });
+  }
+});
+
+router.post("/refresh", autentikasi, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id_pengguna, nama_pengguna, email, peran, status_akun
+       FROM pengguna
+       WHERE id_pengguna = $1`,
+      [req.pengguna.id_pengguna],
+    );
+
+    const pengguna = result.rows[0];
+
+    if (!pengguna || pengguna.status_akun !== "aktif") {
+      return res.status(401).json({
+        success: false,
+        message: "Akun tidak ditemukan atau tidak aktif.",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        id_pengguna: pengguna.id_pengguna.toString(),
+        peran: pengguna.peran,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
+        algorithm: "HS256",
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Sesi berhasil diperpanjang.",
+      token,
+      pengguna: {
+        id_pengguna: pengguna.id_pengguna.toString(),
+        nama_pengguna: pengguna.nama_pengguna,
+        email: pengguna.email,
+        peran: pengguna.peran,
+      },
+    });
+  } catch (error) {
+    console.error("Refresh token error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal memperpanjang sesi.",
     });
   }
 });

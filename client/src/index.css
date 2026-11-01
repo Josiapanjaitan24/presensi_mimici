@@ -17,7 +17,7 @@
 
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
-  color-scheme: light dark;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -30,7 +30,7 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: not-all) {
   :root {
     --text: #9ca3af;
     --text-h: #f3f4f6;
@@ -52,6 +52,25 @@
 
 body {
   margin: 0;
+}
+
+.session-loading {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 1rem;
+  text-align: center;
+  color: #334155;
+}
+
+.session-loading button {
+  justify-self: center;
+  border: 0;
+  border-radius: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
 }
 
 #root {

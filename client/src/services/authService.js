@@ -1,15 +1,16 @@
 
-const API_URL = "http://127.0.0.1:5001/api";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5001/api";
 
-export async function login(identitas, kataSandi) {
+export async function login(identitas, kataSandi, peran) {
   const response = await fetch(`${API_URL}/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      identitas,
-      kata_sandi: kataSandi,
+        identitas,
+        kata_sandi: kataSandi,
+        peran,
     }),
   });
 
