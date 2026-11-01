@@ -1,5 +1,6 @@
 
-const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:5001/api";
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://presensi-mimici.vercel.app/api";
 
 export async function login(identitas, kataSandi, peran) {
   const response = await fetch(`${API_URL}/auth/login`, {
@@ -8,9 +9,9 @@ export async function login(identitas, kataSandi, peran) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-        identitas,
-        kata_sandi: kataSandi,
-        peran,
+      identitas,
+      kata_sandi: kataSandi,
+      peran,
     }),
   });
 
