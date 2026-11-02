@@ -1,4 +1,6 @@
 export const POTONGAN_DEFAULT = Object.freeze({ izin: 65000, sakit: 0, alfa: 100000, terlambat: 1000 });
+export const ALLOWED_ATTENDANCE_STATUS = Object.freeze(["Hadir", "Terlambat", "Izin", "Sakit", "Alfa", "Libur"]);
+export const ALLOWED_IMAGE_MIME_TYPES = Object.freeze(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 
 export function getJakartaTime(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -57,14 +59,57 @@ export function calculateLateDeduction(minutes, rate = POTONGAN_DEFAULT.terlamba
   return Math.max(0, Number(minutes)) * Number(rate);
 }
 
+export function isValidDateString(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function assertDateRange(start, end) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) {
+  if (!isValidDateString(start) || !isValidDateString(end) || end < start) {
     throw new Error("Rentang tanggal tidak valid.");
   }
 }
 
 export function isValidCoordinate(value, min, max) {
   return Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max;
+}
+
+export function isValidPositiveId(value) {
+  return /^[1-9]\d*$/.test(String(value ?? "").trim());
+}
+
+export function isValidTimeString(value) {
+  return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(value.trim());
+}
+
+export function isValidEmail(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return trimmed.length >= 5 && trimmed.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+export function isValidBase64Image(value, maxLength = 10_000_000) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maxLength) return false;
+  return /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=\s]+$/i.test(trimmed);
+}
+
+export function sanitizeFilename(value, fallback = "lampiran.jpg") {
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  const base = value
+    .trim()
+    .replace(/^.*[\\/]/, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .replace(/\.{2,}/g, ".")
+    .slice(0, 120);
+  if (!base || !/\.(jpg|jpeg|png|webp)$/i.test(base)) {
+    return fallback;
+  }
+  return base;
 }
 
 export function csvEscape(value) {

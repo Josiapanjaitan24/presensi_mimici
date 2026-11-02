@@ -21,7 +21,7 @@ export default function KaryawanDashboard() {
   const [absensiView, setAbsensiView] = useState("overview");
 
   // Real-time clock & popout modal
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [isClockModalOpen, setIsClockModalOpen] = useState(false);
   const [previewProof, setPreviewProof] = useState(null);
 
@@ -29,7 +29,7 @@ export default function KaryawanDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
 
@@ -90,7 +90,7 @@ export default function KaryawanDashboard() {
   };
 
   useEffect(() => {
-    loadData();
+    Promise.resolve().then(() => loadData());
   }, []);
 
   function handleLogout() {
@@ -870,10 +870,10 @@ export default function KaryawanDashboard() {
 function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const canvasRef = useRef(null);
+  const hasMediaSupport = typeof navigator !== "undefined" && Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
 
-  const [cameraReady, setCameraReady] = useState(false);
-  const [useFallbackCanvas, setUseFallbackCanvas] = useState(false);
+  const [cameraReady, setCameraReady] = useState(!hasMediaSupport);
+  const [useFallbackCanvas, setUseFallbackCanvas] = useState(!hasMediaSupport);
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [cameraError, setCameraError] = useState(() => (new Date().getHours() < 7 ? "Presensi belum dibuka" : ""));
@@ -905,9 +905,6 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
           setCameraReady(true);
           setUseFallbackCanvas(true);
         });
-    } else {
-      setCameraReady(true);
-      setUseFallbackCanvas(true);
     }
 
     return () => {
@@ -1138,11 +1135,14 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
 // SUBMISSION FORM COMPONENT (DENGAN WAJIB UPLOAD BUKTI GAMBAR)
 // =========================================================================
 function SubmissionForm({ onDone }) {
-  const [form, setForm] = useState({
-    jenis: "izin",
-    tanggal_mulai: new Date().toISOString().slice(0, 10),
-    tanggal_selesai: new Date().toISOString().slice(0, 10),
-    alasan: "",
+  const [form, setForm] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      jenis: "izin",
+      tanggal_mulai: today,
+      tanggal_selesai: today,
+      alasan: "",
+    };
   });
   const [fileData, setFileData] = useState({
     foto_bukti: "",

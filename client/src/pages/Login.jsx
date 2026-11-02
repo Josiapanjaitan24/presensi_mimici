@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { login } from "../services/authService";
 import { saveSessionToken } from "../services/api";
@@ -11,11 +10,9 @@ export default function Login({ role = "karyawan", sessionError = "" }) {
   const [ingatSaya, setIngatSaya] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
 
-  useEffect(() => {
-    if (sessionError) setError(sessionError);
-  }, [sessionError]);
+  const activeError = error || sessionError;
 
   // Update jam analog setiap detik
   useEffect(() => {
@@ -109,10 +106,14 @@ export default function Login({ role = "karyawan", sessionError = "" }) {
         {/* Card */}
         <section className="login-card">
           <div className="login-brand">
-            <p className="login-eyebrow">PORTAL {role === "admin" ? "ADMIN" : "KARYAWAN"}</p>
+            <p className="login-eyebrow">
+              PORTAL {role === "admin" ? "ADMIN" : "KARYAWAN"}
+            </p>
             <h1>Selamat Datang</h1>
             <p className="login-description">
-              {role === "admin" ? "Kelola sistem presensi Mimici." : "Silakan masuk untuk melakukan presensi."}
+              {role === "admin"
+                ? "Kelola sistem presensi Mimici."
+                : "Silakan masuk untuk melakukan presensi."}
             </p>
           </div>
 
@@ -172,7 +173,9 @@ export default function Login({ role = "karyawan", sessionError = "" }) {
                   type="button"
                   className="login-toggle-password"
                   onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+                  aria-label={
+                    showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"
+                  }
                 >
                   {showPassword ? (
                     <svg
@@ -217,24 +220,22 @@ export default function Login({ role = "karyawan", sessionError = "" }) {
                 className="login-forgot-link"
                 onClick={(e) => {
                   e.preventDefault();
-                  alert("Silakan hubungi administrator atau HRD untuk mereset kata sandi Anda.");
+                  alert(
+                    "Silakan hubungi administrator atau HRD untuk mereset kata sandi Anda.",
+                  );
                 }}
               >
                 Lupa kata sandi?
               </a>
             </div>
 
-            {error && (
+            {activeError && (
               <p className="login-error" role="alert">
-                {error}
+                {activeError}
               </p>
             )}
 
-            <button
-              className="login-button"
-              type="submit"
-              disabled={loading}
-            >
+            <button className="login-button" type="submit" disabled={loading}>
               {loading ? "Memproses..." : "Masuk"}
             </button>
           </form>
@@ -242,7 +243,7 @@ export default function Login({ role = "karyawan", sessionError = "" }) {
 
         {/* Page Footer */}
         <p className="login-page-footer">
-          Presensi Mimici &middot; {new Date().getFullYear()}
+          Presensi Mimici &middot; {currentTime.getFullYear()}
         </p>
       </div>
     </main>

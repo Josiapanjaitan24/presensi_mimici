@@ -1,16 +1,18 @@
 import ExcelJS from "exceljs";
 
 async function testExport() {
-  const loginRes = await fetch("http://127.0.0.1:5001/api/auth/login", {
+  const loginRes = await fetch("https://presensi-mimici.vercel.app/api/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ identitas: "admin", kata_sandi: "admin123" }),
   });
   const { token } = await loginRes.json();
 
-  const res = await fetch("http://127.0.0.1:5001/api/admin/reports/export?dari=2026-10-01&sampai=2026-10-31", {
-    headers: { Authorization: "Bearer " + token },
-  });
+  const res = await fetch(
+    "https://presensi-mimici.vercel.app/api/admin/reports/export?dari=2026-10-01&sampai=2026-10-31",
+    {
+      headers: { Authorization: "Bearer " + token },
+    });
   console.log("Export HTTP status:", res.status, res.headers.get("content-type"));
 
   const arrayBuffer = await res.arrayBuffer();

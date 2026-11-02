@@ -1,28 +1,431 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, formatDate, formatDateTime, money } from "../services/api";
 
-const titleToKey = { "Data Karyawan": "employees", "Data Cabang": "branches", "Jadwal & Shift Kerja": "schedules", "Monitoring Presensi": "attendance", "Pengajuan Izin & Sakit": "submissions", "Laporan & Rekap": "reports" };
+const titleToKey = {
+  "Data Karyawan": "employees",
+  "Data Cabang": "branches",
+  "Jadwal & Shift Kerja": "schedules",
+  "Monitoring Presensi": "attendance",
+  "Pengajuan Izin & Sakit": "submissions",
+  "Laporan & Rekap": "reports",
+};
 const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-function Field({ label, children }) { return <label className="form-field"><span>{label}</span>{children}</label>; }
-function Table({ heads, children }) { return <div className="table-wrap"><table><thead><tr>{heads.map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
-function Message({ text, error }) { return text && <p className={error ? "form-error" : "form-success"}>{text}</p>; }
 
-export default function AdminFeatureModal({ title, onClose }) {
-  const [data, setData] = useState([]); const [branches, setBranches] = useState([]); const [error, setError] = useState(""); const [message, setMessage] = useState(""); const key = titleToKey[title];
-  const load = async () => { try { const endpoint = { employees: "/admin/employees", branches: "/admin/branches", schedules: "/admin/schedules", attendance: "/admin/attendance", submissions: "/admin/submissions" }[key]; if (endpoint) { const result = await api.get(endpoint); setData(result.data); } if (key === "employees") setBranches((await api.get("/admin/branches")).data); setError(""); } catch (err) { setError(err.message); } };
-  useEffect(() => { load(); }, [key]);
-  const notify = (text) => { setMessage(text); setError(""); load(); };
-  return <div className="module-backdrop" onClick={onClose}><section className="module-modal" onClick={(event) => event.stopPropagation()}><div className="module-modal-header"><h2>{title}</h2><button type="button" onClick={onClose}>×</button></div><Message text={error} error />{key === "employees" && <Employees data={data} branches={branches} onDone={notify} />}{key === "branches" && <Branches data={data} onDone={notify} />}{key === "schedules" && <Schedules data={data} onDone={notify} />}{key === "attendance" && <Attendance data={data} />}{key === "submissions" && <Submissions data={data} onDone={notify} />}{key === "reports" && <Reports onDone={notify} />}<Message text={message} /></section></div>;
+function Field({ label, children }) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
 }
 
-function Employees({ data, branches, onDone }) { const [form, setForm] = useState({}); const [placement, setPlacement] = useState({}); const update = (event) => setForm({ ...form, [event.target.name]: event.target.value }); const submit = async (event) => { event.preventDefault(); try { await api.post("/admin/employees", form); setForm({}); onDone("Karyawan berhasil ditambahkan."); } catch (err) { onDone(err.message); } }; const assign = async (employee) => { if (!placement[employee.id_karyawan]) return; try { await api.post("/admin/placements", { id_karyawan: employee.id_karyawan, id_cabang: placement[employee.id_karyawan], tanggal_mulai: new Date().toISOString().slice(0, 10) }); onDone("Penempatan berhasil disimpan."); } catch (err) { onDone(err.message); } }; return <><form className="module-form" onSubmit={submit}><Field label="Nama lengkap"><input name="nama_lengkap" onChange={update} required /></Field><Field label="NIP"><input name="nip" onChange={update} required /></Field><Field label="Username"><input name="nama_pengguna" onChange={update} required /></Field><Field label="Email"><input type="email" name="email" onChange={update} required /></Field><Field label="Kata sandi"><input type="password" name="kata_sandi" onChange={update} required /></Field><button className="primary-button">Tambah</button></form><Table heads={["NIP", "Nama", "Email", "Cabang", "Penempatan"]}>{data.map((item) => <tr key={item.id_karyawan}><td>{item.nip}</td><td>{item.nama_lengkap}</td><td>{item.email}</td><td><select value={placement[item.id_karyawan] || ""} onChange={(event) => setPlacement({ ...placement, [item.id_karyawan]: event.target.value })}><option value="">Pilih cabang</option>{branches.map((branch) => <option key={branch.id_cabang} value={branch.id_cabang}>{branch.nama_cabang}</option>)}</select></td><td><button className="link-button" onClick={() => assign(item)}>Simpan</button></td></tr>)}</Table></>; }
+function Table({ heads, children }) {
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            {heads.map((head) => (
+              <th key={head}>{head}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
 
-function Branches({ data, onDone }) { const [form, setForm] = useState({ radius_meter: 100 }); const update = (event) => setForm({ ...form, [event.target.name]: event.target.value }); const submit = async (event) => { event.preventDefault(); try { await api.post("/admin/branches", form); setForm({ radius_meter: 100 }); onDone("Cabang berhasil ditambahkan."); } catch (err) { onDone(err.message); } }; return <><form className="module-form" onSubmit={submit}><Field label="Kode"><input name="kode_cabang" onChange={update} required /></Field><Field label="Nama"><input name="nama_cabang" onChange={update} required /></Field><Field label="Alamat"><input name="alamat" onChange={update} /></Field><Field label="Latitude"><input type="number" step="any" name="latitude" onChange={update} required /></Field><Field label="Longitude"><input type="number" step="any" name="longitude" onChange={update} required /></Field><Field label="Radius meter"><input type="number" name="radius_meter" value={form.radius_meter} onChange={update} /></Field><button className="primary-button">Tambah</button></form><Table heads={["Kode", "Nama", "Alamat", "Koordinat", "Radius", "Status"]}>{data.map((item) => <tr key={item.id_cabang}><td>{item.kode_cabang}</td><td>{item.nama_cabang}</td><td>{item.alamat || "-"}</td><td>{item.latitude}, {item.longitude}</td><td>{item.radius_meter} m</td><td>{item.status_cabang}</td></tr>)}</Table></>; }
+function Message({ text, error }) {
+  return text && <p className={error ? "form-error" : "form-success"}>{text}</p>;
+}
 
-function Schedules({ data, onDone }) { const [form, setForm] = useState({ toleransi_menit: 10 }); const update = (event) => setForm({ ...form, [event.target.name]: event.target.value }); const submit = async (event) => { event.preventDefault(); try { await api.post("/admin/schedules", form); setForm({ toleransi_menit: 10 }); onDone("Jadwal berhasil ditambahkan."); } catch (err) { onDone(err.message); } }; return <><form className="module-form" onSubmit={submit}><Field label="Kode jadwal"><input name="kode_jadwal" onChange={update} required /></Field><Field label="Nama jadwal"><input name="nama_jadwal" onChange={update} required /></Field><Field label="Jam mulai"><input type="time" name="jam_mulai" onChange={update} required /></Field><Field label="Jam selesai"><input type="time" name="jam_selesai" onChange={update} /></Field><Field label="Toleransi"><input type="number" name="toleransi_menit" value={form.toleransi_menit} onChange={update} /></Field><button className="primary-button">Tambah Jadwal</button></form><Table heads={["Cabang", "Hari", "Jadwal", "Mulai", "Toleransi"]}>{data.map((item) => <tr key={item.id_jadwal_umum}><td>{item.nama_cabang}</td><td>{days[item.hari]}</td><td>{item.nama_jadwal}</td><td>{String(item.jam_mulai).slice(0, 5)}</td><td>{item.toleransi_menit} menit</td></tr>)}</Table></>; }
+export default function AdminFeatureModal({ title, onClose }) {
+  const [data, setData] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const key = titleToKey[title];
 
-function Attendance({ data }) { return <Table heads={["Tanggal", "Karyawan", "Cabang", "Masuk", "Pulang", "Status", "Terlambat", "Potongan"]}>{data.map((item) => <tr key={item.id_absensi}><td>{formatDate(item.tanggal)}</td><td>{item.nama_lengkap}<br /><small>{item.nip}</small></td><td>{item.nama_cabang}</td><td>{formatDateTime(item.waktu_masuk)}</td><td>{formatDateTime(item.waktu_pulang)}</td><td>{item.status_kehadiran}</td><td>{item.menit_terlambat} menit</td><td>{money(item.potongan)}</td></tr>)}</Table>; }
+  const load = useCallback(async () => {
+    try {
+      const endpoint = {
+        employees: "/admin/employees",
+        branches: "/admin/branches",
+        schedules: "/admin/schedules",
+        attendance: "/admin/attendance",
+        submissions: "/admin/submissions",
+      }[key];
+      if (endpoint) {
+        const result = await api.get(endpoint);
+        setData(result.data);
+      }
+      if (key === "employees") {
+        const branchResult = await api.get("/admin/branches");
+        setBranches(branchResult.data);
+      }
+      setError("");
+    } catch (err) {
+      setError(err.message);
+    }
+  }, [key]);
 
-function Submissions({ data, onDone }) { const decide = async (id, keputusan) => { try { await api.patch(`/admin/submissions/${id}/decision`, { keputusan }); onDone("Keputusan pengajuan berhasil disimpan."); } catch (err) { onDone(err.message); } }; return <Table heads={["Karyawan", "Jenis", "Periode", "Alasan", "Status", "Aksi"]}>{data.map((item) => <tr key={item.id_pengajuan}><td>{item.nama_lengkap}</td><td>{item.jenis}</td><td>{formatDate(item.tanggal_mulai)} - {formatDate(item.tanggal_selesai)}</td><td>{item.alasan}</td><td>{item.status}</td><td>{item.status === "menunggu" && <><button className="link-button" onClick={() => decide(item.id_pengajuan, "disetujui")}>Setujui</button> <button className="danger-link" onClick={() => decide(item.id_pengajuan, "ditolak")}>Tolak</button></>}</td></tr>)}</Table>; }
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) load();
+    });
+    return () => {
+      active = false;
+    };
+  }, [load]);
 
-function Reports({ onDone }) { const curYear = new Date().getFullYear(); const [form, setForm] = useState({ dari: `${curYear}-01-01`, sampai: `${curYear}-12-31` }); const update = (event) => setForm({ ...form, [event.target.name]: event.target.value }); const download = async (event) => { event.preventDefault(); try { const response = await api.download(`/admin/reports/export?dari=${form.dari}&sampai=${form.sampai}`); if (!response.ok) throw new Error("Laporan gagal dibuat."); const link = document.createElement("a"); link.href = URL.createObjectURL(await response.blob()); link.download = `laporan-presensi-${form.dari}-${form.sampai}.xlsx`; link.click(); onDone("Laporan berhasil diunduh."); } catch (err) { onDone(err.message); } }; return <form className="module-form" onSubmit={download}><p className="muted">Data lengkap presensi, keterlambatan, dan potongan seluruh cabang.</p><Field label="Dari"><input type="date" name="dari" value={form.dari} onChange={update} /></Field><Field label="Sampai"><input type="date" name="sampai" value={form.sampai} onChange={update} /></Field><button className="primary-button">Unduh Excel</button></form>; }
+  const notify = (text) => {
+    setMessage(text);
+    setError("");
+    load();
+  };
+
+  return (
+    <div className="module-backdrop" onClick={onClose}>
+      <section
+        className="module-modal"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="module-modal-header">
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <Message text={error} error />
+        {key === "employees" && (
+          <Employees data={data} branches={branches} onDone={notify} />
+        )}
+        {key === "branches" && <Branches data={data} onDone={notify} />}
+        {key === "schedules" && <Schedules data={data} onDone={notify} />}
+        {key === "attendance" && <Attendance data={data} />}
+        {key === "submissions" && <Submissions data={data} onDone={notify} />}
+        {key === "reports" && <Reports onDone={notify} />}
+        <Message text={message} />
+      </section>
+    </div>
+  );
+}
+
+function Employees({ data, branches, onDone }) {
+  const [form, setForm] = useState({});
+  const [placement, setPlacement] = useState({});
+  const update = (event) =>
+    setForm({ ...form, [event.target.name]: event.target.value });
+  const submit = async (event) => {
+    event.preventDefault();
+    try {
+      await api.post("/admin/employees", form);
+      setForm({});
+      onDone("Karyawan berhasil ditambahkan.");
+    } catch (err) {
+      onDone(err.message);
+    }
+  };
+  const assign = async (employee) => {
+    if (!placement[employee.id_karyawan]) return;
+    try {
+      await api.post("/admin/placements", {
+        id_karyawan: employee.id_karyawan,
+        id_cabang: placement[employee.id_karyawan],
+        tanggal_mulai: new Date().toISOString().slice(0, 10),
+      });
+      onDone("Penempatan berhasil disimpan.");
+    } catch (err) {
+      onDone(err.message);
+    }
+  };
+  return (
+    <>
+      <form className="module-form" onSubmit={submit}>
+        <Field label="Nama lengkap">
+          <input name="nama_lengkap" onChange={update} required />
+        </Field>
+        <Field label="NIP">
+          <input name="nip" onChange={update} required />
+        </Field>
+        <Field label="Username">
+          <input name="nama_pengguna" onChange={update} required />
+        </Field>
+        <Field label="Email">
+          <input type="email" name="email" onChange={update} required />
+        </Field>
+        <Field label="Kata sandi">
+          <input type="password" name="kata_sandi" onChange={update} required />
+        </Field>
+        <button className="primary-button">Tambah</button>
+      </form>
+      <Table heads={["NIP", "Nama", "Email", "Cabang", "Penempatan"]}>
+        {data.map((item) => (
+          <tr key={item.id_karyawan}>
+            <td>{item.nip}</td>
+            <td>{item.nama_lengkap}</td>
+            <td>{item.email}</td>
+            <td>
+              <select
+                value={placement[item.id_karyawan] || ""}
+                onChange={(event) =>
+                  setPlacement({
+                    ...placement,
+                    [item.id_karyawan]: event.target.value,
+                  })
+                }
+              >
+                <option value="">Pilih cabang</option>
+                {branches.map((branch) => (
+                  <option key={branch.id_cabang} value={branch.id_cabang}>
+                    {branch.nama_cabang}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td>
+              <button className="link-button" onClick={() => assign(item)}>
+                Simpan
+              </button>
+            </td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
+function Branches({ data, onDone }) {
+  const [form, setForm] = useState({ radius_meter: 100 });
+  const update = (event) =>
+    setForm({ ...form, [event.target.name]: event.target.value });
+  const submit = async (event) => {
+    event.preventDefault();
+    try {
+      await api.post("/admin/branches", form);
+      setForm({ radius_meter: 100 });
+      onDone("Cabang berhasil ditambahkan.");
+    } catch (err) {
+      onDone(err.message);
+    }
+  };
+  return (
+    <>
+      <form className="module-form" onSubmit={submit}>
+        <Field label="Kode">
+          <input name="kode_cabang" onChange={update} required />
+        </Field>
+        <Field label="Nama">
+          <input name="nama_cabang" onChange={update} required />
+        </Field>
+        <Field label="Alamat">
+          <input name="alamat" onChange={update} />
+        </Field>
+        <Field label="Latitude">
+          <input type="number" step="any" name="latitude" onChange={update} required />
+        </Field>
+        <Field label="Longitude">
+          <input type="number" step="any" name="longitude" onChange={update} required />
+        </Field>
+        <Field label="Radius meter">
+          <input
+            type="number"
+            name="radius_meter"
+            value={form.radius_meter}
+            onChange={update}
+          />
+        </Field>
+        <button className="primary-button">Tambah</button>
+      </form>
+      <Table heads={["Kode", "Nama", "Alamat", "Koordinat", "Radius", "Status"]}>
+        {data.map((item) => (
+          <tr key={item.id_cabang}>
+            <td>{item.kode_cabang}</td>
+            <td>{item.nama_cabang}</td>
+            <td>{item.alamat || "-"}</td>
+            <td>
+              {item.latitude}, {item.longitude}
+            </td>
+            <td>{item.radius_meter} m</td>
+            <td>{item.status_cabang}</td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
+function Schedules({ data, onDone }) {
+  const [form, setForm] = useState({ toleransi_menit: 10 });
+  const update = (event) =>
+    setForm({ ...form, [event.target.name]: event.target.value });
+  const submit = async (event) => {
+    event.preventDefault();
+    try {
+      await api.post("/admin/schedules", form);
+      setForm({ toleransi_menit: 10 });
+      onDone("Jadwal berhasil ditambahkan.");
+    } catch (err) {
+      onDone(err.message);
+    }
+  };
+  return (
+    <>
+      <form className="module-form" onSubmit={submit}>
+        <Field label="Kode jadwal">
+          <input name="kode_jadwal" onChange={update} required />
+        </Field>
+        <Field label="Nama jadwal">
+          <input name="nama_jadwal" onChange={update} required />
+        </Field>
+        <Field label="Jam mulai">
+          <input type="time" name="jam_mulai" onChange={update} required />
+        </Field>
+        <Field label="Jam selesai">
+          <input type="time" name="jam_selesai" onChange={update} />
+        </Field>
+        <Field label="Toleransi">
+          <input
+            type="number"
+            name="toleransi_menit"
+            value={form.toleransi_menit}
+            onChange={update}
+          />
+        </Field>
+        <button className="primary-button">Tambah Jadwal</button>
+      </form>
+      <Table heads={["Cabang", "Hari", "Jadwal", "Mulai", "Toleransi"]}>
+        {data.map((item) => (
+          <tr key={item.id_jadwal_umum}>
+            <td>{item.nama_cabang}</td>
+            <td>{days[item.hari]}</td>
+            <td>{item.nama_jadwal}</td>
+            <td>{String(item.jam_mulai).slice(0, 5)}</td>
+            <td>{item.toleransi_menit} menit</td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
+function Attendance({ data }) {
+  return (
+    <Table
+      heads={[
+        "Tanggal",
+        "Karyawan",
+        "Cabang",
+        "Masuk",
+        "Pulang",
+        "Status",
+        "Terlambat",
+        "Potongan",
+      ]}
+    >
+      {data.map((item) => (
+        <tr key={item.id_absensi}>
+          <td>{formatDate(item.tanggal)}</td>
+          <td>
+            {item.nama_lengkap}
+            <br />
+            <small>{item.nip}</small>
+          </td>
+          <td>{item.nama_cabang}</td>
+          <td>{formatDateTime(item.waktu_masuk)}</td>
+          <td>{formatDateTime(item.waktu_pulang)}</td>
+          <td>{item.status_kehadiran}</td>
+          <td>{item.menit_terlambat} menit</td>
+          <td>{money(item.potongan)}</td>
+        </tr>
+      ))}
+    </Table>
+  );
+}
+
+function Submissions({ data, onDone }) {
+  const decide = async (id, keputusan) => {
+    try {
+      await api.patch(`/admin/submissions/${id}/decision`, { keputusan });
+      onDone("Keputusan pengajuan berhasil disimpan.");
+    } catch (err) {
+      onDone(err.message);
+    }
+  };
+  return (
+    <Table heads={["Karyawan", "Jenis", "Periode", "Alasan", "Status", "Aksi"]}>
+      {data.map((item) => (
+        <tr key={item.id_pengajuan}>
+          <td>{item.nama_lengkap}</td>
+          <td>{item.jenis}</td>
+          <td>
+            {formatDate(item.tanggal_mulai)} -{" "}
+            {formatDate(item.tanggal_selesai)}
+          </td>
+          <td>{item.alasan}</td>
+          <td>{item.status}</td>
+          <td>
+            {item.status === "menunggu" && (
+              <>
+                <button
+                  className="link-button"
+                  onClick={() => decide(item.id_pengajuan, "disetujui")}
+                >
+                  Setujui
+                </button>{" "}
+                <button
+                  className="danger-link"
+                  onClick={() => decide(item.id_pengajuan, "ditolak")}
+                >
+                  Tolak
+                </button>
+              </>
+            )}
+          </td>
+        </tr>
+      ))}
+    </Table>
+  );
+}
+
+function Reports({ onDone }) {
+  const [form, setForm] = useState(() => {
+    const curYear = new Date().getFullYear();
+    return { dari: `${curYear}-01-01`, sampai: `${curYear}-12-31` };
+  });
+  const update = (event) =>
+    setForm({ ...form, [event.target.name]: event.target.value });
+  const download = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await api.download(
+        `/admin/reports/export?dari=${form.dari}&sampai=${form.sampai}`,
+      );
+      if (!response.ok) throw new Error("Laporan gagal dibuat.");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(await response.blob());
+      link.download = `laporan-presensi-${form.dari}-${form.sampai}.xlsx`;
+      link.click();
+      onDone("Laporan berhasil diunduh.");
+    } catch (err) {
+      onDone(err.message);
+    }
+  };
+  return (
+    <form className="module-form" onSubmit={download}>
+      <p className="muted">
+        Data lengkap presensi, keterlambatan, dan potongan seluruh cabang.
+      </p>
+      <Field label="Dari">
+        <input type="date" name="dari" value={form.dari} onChange={update} />
+      </Field>
+      <Field label="Sampai">
+        <input type="date" name="sampai" value={form.sampai} onChange={update} />
+      </Field>
+      <button className="primary-button">Unduh Excel</button>
+    </form>
+  );
+}

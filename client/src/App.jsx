@@ -6,17 +6,26 @@ import { getProfil } from "./services/authService";
 import { getStoredToken, saveSessionToken, logout } from "./services/api";
 
 export default function App() {
-  const [session, setSession] = useState({ status: "checking", pengguna: null, error: "" });
   const isAdminPath = window.location.pathname === "/admin";
-  const isEmployeePath = window.location.pathname === "/" || window.location.pathname === "/karyawan";
+  const isEmployeePath =
+    window.location.pathname === "/" ||
+    window.location.pathname === "/karyawan";
   const expectedRole = isAdminPath ? "admin" : "karyawan";
+
+  const [session, setSession] = useState(() => {
+    const token = getStoredToken(expectedRole);
+    return {
+      status: token ? "checking" : "anonymous",
+      pengguna: null,
+      error: "",
+    };
+  });
 
   useEffect(() => {
     let active = true;
     const token = getStoredToken(expectedRole);
 
     if (!token) {
-      setSession({ status: "anonymous", pengguna: null, error: "" });
       return undefined;
     }
 
@@ -33,11 +42,16 @@ export default function App() {
         }
 
         saveSessionToken(data.pengguna.peran, token, data.pengguna);
-        setSession({ status: "authenticated", pengguna: data.pengguna, error: "" });
+        setSession({
+          status: "authenticated",
+          pengguna: data.pengguna,
+          error: "",
+        });
       })
       .catch((error) => {
         if (!active) return;
-        const hasNetworkError = !error.message || error.message.includes("Failed to fetch");
+        const hasNetworkError =
+          !error.message || error.message.includes("Failed to fetch");
         if (!hasNetworkError) {
           logout(expectedRole);
         }
@@ -57,14 +71,17 @@ export default function App() {
 
   useEffect(() => {
     const expire = (e) => {
-      const msg = e?.detail?.message || "Sesi login Anda telah berakhir (60 menit). Silakan login kembali.";
+      const msg =
+        e?.detail?.message ||
+        "Sesi login Anda telah berakhir (60 menit). Silakan login kembali.";
       setSession({ status: "anonymous", pengguna: null, error: msg });
     };
     window.addEventListener("session-expired", expire);
     return () => window.removeEventListener("session-expired", expire);
   }, []);
 
-  if (session.status === "checking") return <main className="session-loading">Memverifikasi sesi...</main>;
+  if (session.status === "checking")
+    return <main className="session-loading">Memverifikasi sesi...</main>;
   if (session.status === "error")
     return (
       <main className="session-loading">
@@ -73,11 +90,19 @@ export default function App() {
       </main>
     );
 
-  if (session.status === "authenticated" && isAdminPath && session.pengguna?.peran === "admin") {
+  if (
+    session.status === "authenticated" &&
+    isAdminPath &&
+    session.pengguna?.peran === "admin"
+  ) {
     return <AdminDashboard />;
   }
 
-  if (session.status === "authenticated" && isEmployeePath && session.pengguna?.peran === "karyawan") {
+  if (
+    session.status === "authenticated" &&
+    isEmployeePath &&
+    session.pengguna?.peran === "karyawan"
+  ) {
     return <KaryawanDashboard />;
   }
 

@@ -1,11 +1,50 @@
-
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { pool } from "../config/database.js";
+import { isValidPositiveId } from "../utils/business.js";
+
+const revokedTokens = new Map();
+
+function hashToken(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex");
+}
+
+function cleanupRevokedTokens(nowMs = Date.now()) {
+  if (revokedTokens.size === 0) return;
+  for (const [digest, expiresAtMs] of revokedTokens.entries()) {
+    if (nowMs >= expiresAtMs) {
+      revokedTokens.delete(digest);
+    }
+  }
+}
+
+export function revokeToken(token, expSeconds) {
+  if (!token) return;
+  const nowMs = Date.now();
+  cleanupRevokedTokens(nowMs);
+  const expiresAtMs = Number.isFinite(Number(expSeconds))
+    ? Number(expSeconds) * 1000
+    : nowMs + 60 * 60 * 1000;
+  revokedTokens.set(hashToken(token), expiresAtMs);
+}
+
+export function isTokenRevoked(token) {
+  if (!token) return false;
+  cleanupRevokedTokens();
+  const digest = hashToken(token);
+  const expiresAtMs = revokedTokens.get(digest);
+  if (!expiresAtMs) return false;
+  if (Date.now() >= expiresAtMs) {
+    revokedTokens.delete(digest);
+    return false;
+  }
+  return true;
+}
 
 export async function autentikasi(req, res, next) {
   const header = req.headers.authorization;
   const token = header?.startsWith("Bearer ")
-    ? header.slice(7)
+    ? header.slice(7).trim()
     : null;
 
   if (!token) {
@@ -22,10 +61,24 @@ export async function autentikasi(req, res, next) {
     });
   }
 
+  if (isTokenRevoked(token)) {
+    return res.status(401).json({
+      success: false,
+      message: "Sesi login Anda telah berakhir (60 menit). Silakan login kembali.",
+    });
+  }
+
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET, {
       algorithms: ["HS256"],
     });
+
+    if (!isValidPositiveId(payload?.id_pengguna)) {
+      return res.status(401).json({
+        success: false,
+        message: "Sesi tidak valid atau akun sudah tidak aktif.",
+      });
+    }
 
     const result = await pool.query(
       "SELECT id_pengguna, peran, status_akun FROM pengguna WHERE id_pengguna = $1",
@@ -39,7 +92,13 @@ export async function autentikasi(req, res, next) {
       });
     }
 
-    req.pengguna = { ...payload, ...pengguna, id_pengguna: pengguna.id_pengguna.toString() };
+    req.token = token;
+    req.pengguna = {
+      id_pengguna: pengguna.id_pengguna.toString(),
+      peran: pengguna.peran,
+      status_akun: pengguna.status_akun,
+      exp: payload.exp,
+    };
 
     next();
   } catch (error) {

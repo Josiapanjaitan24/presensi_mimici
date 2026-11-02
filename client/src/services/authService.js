@@ -1,6 +1,4 @@
-
-const API_URL =
-  import.meta.env.VITE_API_URL || "https://presensi-mimici.vercel.app/api";
+import { API_URL } from "./api";
 
 export async function login(identitas, kataSandi, peran) {
   const response = await fetch(`${API_URL}/auth/login`, {

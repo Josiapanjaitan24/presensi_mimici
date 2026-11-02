@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import "./Dashboard.css";
-import { api, formatDate, formatDateTime, logout, money } from "../services/api";
+import { api, formatDate, formatDateTime, logout, money, saveSessionToken } from "../services/api";
 
 const DAYS_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
@@ -20,7 +20,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState(getInitialTab);
 
   // Real-time clock & popout modal
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [isClockModalOpen, setIsClockModalOpen] = useState(false);
 
   // Core administrative data
@@ -91,7 +91,7 @@ export default function AdminDashboard() {
   const [submissionFilter, setSubmissionFilter] = useState("semua");
 
   // Form states
-  const [employeeForm, setEmployeeForm] = useState({
+  const [employeeForm, setEmployeeForm] = useState(() => ({
     nama_lengkap: "",
     nip: "",
     nama_pengguna: "",
@@ -99,11 +99,11 @@ export default function AdminDashboard() {
     kata_sandi: "",
     nomor_telepon: "",
     tanggal_bergabung: new Date().toISOString().slice(0, 10),
-  });
-  const [placementForm, setPlacementForm] = useState({
+  }));
+  const [placementForm, setPlacementForm] = useState(() => ({
     id_cabang: "",
     tanggal_mulai: new Date().toISOString().slice(0, 10),
-  });
+  }));
   const [branchForm, setBranchForm] = useState({
     kode_cabang: "",
     nama_cabang: "",
@@ -218,7 +218,7 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    loadAdminData();
+    Promise.resolve().then(() => loadAdminData());
   }, []);
 
   function handleLogout() {
@@ -239,11 +239,12 @@ export default function AdminDashboard() {
 
     try {
       const res = await api.get("/admin/account");
-      if (res.data?.success && res.data.data) {
+      const accountData = res?.data?.data || res?.data;
+      if (accountData?.nama_pengguna) {
         setAccountForm((prev) => ({
           ...prev,
-          nama_pengguna: res.data.data.nama_pengguna,
-          email: res.data.data.email,
+          nama_pengguna: accountData.nama_pengguna,
+          email: accountData.email || "",
         }));
       }
     } catch {
@@ -291,15 +292,15 @@ export default function AdminDashboard() {
       }
 
       const res = await api.patch("/admin/account", payload);
-      if (res.data?.success) {
+      const resPayload = res?.data?.success ? res.data : res;
+      if (resPayload?.success) {
         const updated = {
-          ...adminUser,
-          ...res.data.data,
+          nama_pengguna: resPayload.data?.nama_pengguna || payload.nama_pengguna,
+          peran: resPayload.data?.peran || adminUser?.peran || "admin",
         };
         setAdminUser(updated);
-        localStorage.setItem("pengguna", JSON.stringify(updated));
-        if (res.data.token) {
-          localStorage.setItem("token", res.data.token);
+        if (resPayload.token) {
+          saveSessionToken("admin", resPayload.token, updated);
         }
         setAccountModalSuccess("Akun administrator berhasil diperbarui!");
         setTimeout(() => {
@@ -638,22 +639,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Handler: Toggle status karyawan
-  const handleToggleEmployeeStatus = async (employee) => {
-    const nextStatus = employee.status_karyawan === "aktif" ? "nonaktif" : "aktif";
-    const confirmMsg = `Yakin ingin mengubah status karyawan ${employee.nama_lengkap} menjadi ${nextStatus.toUpperCase()}?`;
-    if (!window.confirm(confirmMsg)) return;
-    try {
-      await api.patch(`/admin/employees/${employee.id_karyawan}/status`, {
-        status_karyawan: nextStatus,
-      });
-      setActionMessage(`Status karyawan ${employee.nama_lengkap} diubah menjadi ${nextStatus}.`);
-      loadAdminData();
-    } catch (err) {
-      setError(err.message || "Gagal mengubah status karyawan.");
-    }
-  };
-
   // Handler: Hapus Akun Karyawan
   const handleConfirmDeleteEmployee = async () => {
     if (!employeeToDelete) return;
@@ -695,7 +680,7 @@ export default function AdminDashboard() {
     setKelolaTab("cabang");
     setPlacementForm({
       id_cabang: emp.penempatan?.[0]?.id_cabang ? String(emp.penempatan[0].id_cabang) : "",
-      tanggal_mulai: emp.penempatan?.[0]?.tanggal_mulai ? String(emp.penempatan[0].tanggal_mulai).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      tanggal_mulai: emp.penempatan?.[0]?.tanggal_mulai ? String(emp.penempatan[0].tanggal_mulai).slice(0, 10) : currentTime.toISOString().slice(0, 10),
     });
     setKelolaDaysOff(Array.isArray(emp.hari_libur) ? [...emp.hari_libur] : []);
     setDeleteConfirmationText("");
@@ -862,21 +847,6 @@ export default function AdminDashboard() {
       setError(err.message || "Gagal menghapus cabang.");
     } finally {
       setDeletingBranch(false);
-    }
-  };
-
-  // Handler: Toggle status cabang (legacy support)
-  const handleToggleBranchStatus = async (branch) => {
-    const nextStatus = branch.status_cabang === "aktif" ? "nonaktif" : "aktif";
-    if (!window.confirm(`Ubah status cabang ${branch.nama_cabang} menjadi ${nextStatus.toUpperCase()}?`)) return;
-    try {
-      await api.patch(`/admin/branches/${branch.id_cabang}`, {
-        status_cabang: nextStatus,
-      });
-      setActionMessage(`Status cabang ${branch.nama_cabang} berhasil diubah.`);
-      loadAdminData();
-    } catch (err) {
-      setError(err.message || "Gagal memperbarui cabang.");
     }
   };
 
