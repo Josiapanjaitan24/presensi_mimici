@@ -1,10 +1,13 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { pool } from "../config/database.js";
-import { autentikasi, revokeToken } from "../middlewares/authMiddleware.js";
+import {
+  autentikasi,
+  revokeToken,
+  signSessionToken,
+} from "../middlewares/authMiddleware.js";
 import { createRateLimiter } from "../middlewares/securityMiddleware.js";
-import { toAuthUserDTO } from "../utils/http.js";
+import { asyncHandler, sendError, toAuthUserDTO } from "../utils/http.js";
 
 const router = Router();
 
@@ -21,8 +24,10 @@ export const loginRateLimiter = createRateLimiter({
     "Terlalu banyak percobaan login. Silakan coba lagi beberapa saat.",
 });
 
-router.post("/login", loginRateLimiter, async (req, res) => {
-  try {
+router.post(
+  "/login",
+  loginRateLimiter,
+  asyncHandler(async (req, res) => {
     const { identitas, kata_sandi, peran } = req.body ?? {};
 
     if (
@@ -31,32 +36,25 @@ router.post("/login", loginRateLimiter, async (req, res) => {
       !identitas.trim() ||
       !kata_sandi
     ) {
-      return res.status(400).json({
-        success: false,
-        message: "Username/email dan kata sandi wajib diisi.",
-      });
+      return sendError(
+        res,
+        400,
+        "Username/email dan kata sandi wajib diisi.",
+      );
     }
 
     if (peran !== undefined && !["admin", "karyawan"].includes(peran)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Peran login tidak valid." });
+      return sendError(res, 400, "Peran login tidak valid.");
     }
 
     const trimmedIdentity = identitas.trim();
     if (trimmedIdentity.length > 150 || kata_sandi.length > 200) {
-      return res.status(401).json({
-        success: false,
-        message: "Identitas atau kata sandi salah.",
-      });
+      return sendError(res, 401, "Identitas atau kata sandi salah.");
     }
 
     if (!process.env.JWT_SECRET) {
       console.error("JWT_SECRET belum dikonfigurasi.");
-      return res.status(500).json({
-        success: false,
-        message: "Konfigurasi autentikasi belum tersedia.",
-      });
+      return sendError(res, 500, "Konfigurasi autentikasi belum tersedia.");
     }
 
     const result = await pool.query(
@@ -77,30 +75,14 @@ router.post("/login", loginRateLimiter, async (req, res) => {
     const cocok = await bcrypt.compare(kata_sandi, hashTarget);
 
     if (!pengguna || !cocok) {
-      return res.status(401).json({
-        success: false,
-        message: "Identitas atau kata sandi salah.",
-      });
+      return sendError(res, 401, "Identitas atau kata sandi salah.");
     }
 
     if (pengguna.status_akun !== "aktif") {
-      return res.status(403).json({
-        success: false,
-        message: "Akun tidak aktif. Hubungi admin.",
-      });
+      return sendError(res, 403, "Akun tidak aktif. Hubungi admin.");
     }
 
-    const token = jwt.sign(
-      {
-        id_pengguna: pengguna.id_pengguna.toString(),
-        peran: pengguna.peran,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
-        algorithm: "HS256",
-      },
-    );
+    const token = signSessionToken(pengguna);
 
     return res.status(200).json({
       success: true,
@@ -108,47 +90,22 @@ router.post("/login", loginRateLimiter, async (req, res) => {
       token,
       pengguna: toAuthUserDTO(pengguna),
     });
-  } catch (error) {
-    console.error("Login error:", error.message);
+  }),
+);
 
-    return res.status(500).json({
-      success: false,
-      message: "Terjadi kesalahan pada server.",
-    });
-  }
+router.get("/me", autentikasi, (req, res) => {
+  return res.status(200).json({
+    success: true,
+    pengguna: toAuthUserDTO(req.pengguna),
+  });
 });
 
-router.get("/me", autentikasi, async (req, res) => {
-  try {
-    return res.status(200).json({
-      success: true,
-      pengguna: toAuthUserDTO(req.pengguna),
-    });
-  } catch (error) {
-    console.error("Get profile error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Gagal mengambil profil pengguna.",
-    });
-  }
-});
-
-router.post("/refresh", autentikasi, async (req, res) => {
-  try {
+router.post(
+  "/refresh",
+  autentikasi,
+  asyncHandler(async (req, res) => {
     const pengguna = req.pengguna;
-
-    const token = jwt.sign(
-      {
-        id_pengguna: pengguna.id_pengguna.toString(),
-        peran: pengguna.peran,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
-        algorithm: "HS256",
-      },
-    );
+    const token = signSessionToken(pengguna);
 
     return res.status(200).json({
       success: true,
@@ -156,14 +113,8 @@ router.post("/refresh", autentikasi, async (req, res) => {
       token,
       pengguna: toAuthUserDTO(pengguna),
     });
-  } catch (error) {
-    console.error("Refresh token error:", error.message);
-    return res.status(500).json({
-      success: false,
-      message: "Gagal memperpanjang sesi.",
-    });
-  }
-});
+  }),
+);
 
 router.post("/logout", autentikasi, (req, res) => {
   revokeToken(req.token, req.pengguna?.exp);

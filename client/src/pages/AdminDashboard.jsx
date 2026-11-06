@@ -1,8 +1,74 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import "./Dashboard.css";
-import { api, formatDate, formatDateTime, logout, money, saveSessionToken } from "../services/api";
+import {
+  api,
+  formatDate,
+  formatDateTime,
+  getClockHandDegrees,
+  logout,
+  money,
+  saveSessionToken,
+} from "../services/api";
 
 const DAYS_ID = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const monthsList = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+const preferredBranchOrder = ["pakuan", "botani", "azimar", "warung nangka", "ats", "ciapus"];
+
+function formatDateStrID(val) {
+  if (!val) return "-";
+  if (typeof val === "string") {
+    const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  const day = String(d.getDate()).padStart(2, "0");
+  const mon = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${mon}/${d.getFullYear()}`;
+}
+
+function formatTimeOnlyStr(val) {
+  if (!val) return "-";
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val).slice(0, 5);
+    return new Intl.DateTimeFormat("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: "Asia/Jakarta",
+    })
+      .format(d)
+      .replace(".", ":");
+  } catch {
+    return "-";
+  }
+}
+
+function formatDisplayPeriod(dariStr, sampaiStr) {
+  try {
+    const d1 = new Date(dariStr + "T00:00:00");
+    const d2 = new Date(sampaiStr + "T00:00:00");
+    const day1 = d1.getDate();
+    const day2 = d2.getDate();
+    const mon1 = monthsList[d1.getMonth()];
+    const mon2 = monthsList[d2.getMonth()];
+    const yr1 = d1.getFullYear();
+    const yr2 = d2.getFullYear();
+    if (yr1 === yr2 && mon1 === mon2) {
+      return `${day1} – ${day2} ${mon2} ${yr2}`;
+    }
+    if (yr1 === yr2) {
+      return `${day1} ${mon1} – ${day2} ${mon2} ${yr2}`;
+    }
+    return `${day1} ${mon1} ${yr1} – ${day2} ${mon2} ${yr2}`;
+  } catch {
+    return `${dariStr} s/d ${sampaiStr}`;
+  }
+}
 
 export default function AdminDashboard() {
   const [adminUser, setAdminUser] = useState(() => JSON.parse(localStorage.getItem("pengguna") || "null"));
@@ -46,6 +112,7 @@ export default function AdminDashboard() {
   const [employeeToDelete, setEmployeeToDelete] = useState(null);
   const [deletingEmployee, setDeletingEmployee] = useState(false);
   const [detailModal, setDetailModal] = useState(null);
+  const [attendancePhotoModal, setAttendancePhotoModal] = useState(null);
 
   // Kelola Cabang Modal state
   const [selectedBranchForKelola, setSelectedBranchForKelola] = useState(null);
@@ -166,6 +233,7 @@ export default function AdminDashboard() {
         setDetailModal(null);
         setSelectedBranchForKelola(null);
         setSelectedScheduleForKelola(null);
+        setAttendancePhotoModal(null);
       }
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -316,79 +384,88 @@ export default function AdminDashboard() {
     }
   };
 
-  // Indonesian date & time
-  const tanggalHariIni = currentTime.toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-
-  const jamSekarang = currentTime.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  const seconds = currentTime.getSeconds();
-  const minutes = currentTime.getMinutes();
-  const hours = currentTime.getHours();
-
-  const secDeg = seconds * 6;
-  const minDeg = minutes * 6 + seconds * 0.1;
-  const hourDeg = (hours % 12) * 30 + minutes * 0.5;
+  const {
+    secDeg,
+    minDeg,
+    hourDeg,
+    tanggalHariIni,
+    jamSekarang,
+  } = getClockHandDegrees(currentTime);
 
   // Filtered employees
-  const filteredEmployees = employees.filter((item) => {
-    const matchesSearch =
-      `${item.nama_lengkap} ${item.nip} ${item.email} ${item.nama_pengguna}`
-        .toLowerCase()
-        .includes(employeeSearch.toLowerCase()) ||
-      (item.penempatan && item.penempatan.some((p) => p.nama_cabang?.toLowerCase().includes(employeeSearch.toLowerCase())));
-    const matchesStatus =
-      employeeStatusFilter === "semua" || item.status_karyawan === employeeStatusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredEmployees = useMemo(() => {
+    const query = employeeSearch.toLowerCase();
+    return employees.filter((item) => {
+      const matchesSearch =
+        `${item.nama_lengkap} ${item.nip} ${item.email} ${item.nama_pengguna}`
+          .toLowerCase()
+          .includes(query) ||
+        (item.penempatan &&
+          item.penempatan.some((p) =>
+            p.nama_cabang?.toLowerCase().includes(query),
+          ));
+      const matchesStatus =
+        employeeStatusFilter === "semua" ||
+        item.status_karyawan === employeeStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [employees, employeeSearch, employeeStatusFilter]);
 
   // Filtered branches
-  const filteredBranches = branches.filter((item) => {
-    return (
+  const filteredBranches = useMemo(() => {
+    const query = branchSearch.toLowerCase();
+    return branches.filter((item) =>
       `${item.kode_cabang} ${item.nama_cabang} ${item.alamat}`
         .toLowerCase()
-        .includes(branchSearch.toLowerCase())
+        .includes(query),
     );
-  });
+  }, [branches, branchSearch]);
 
   // Filtered attendance
-  const filteredAttendance = attendance.filter((item) => {
-    const matchesSearch = `${item.nama_lengkap} ${item.nip} ${item.nama_cabang}`
-      .toLowerCase()
-      .includes(attendanceSearch.toLowerCase());
-    const matchesBranch =
-      !attendanceBranchFilter || String(item.nama_cabang) === attendanceBranchFilter;
-    const matchesDateDari =
-      !attendanceDateDari || (item.tanggal && item.tanggal.slice(0, 10) >= attendanceDateDari);
-    const matchesDateSampai =
-      !attendanceDateSampai || (item.tanggal && item.tanggal.slice(0, 10) <= attendanceDateSampai);
-    return matchesSearch && matchesBranch && matchesDateDari && matchesDateSampai;
-  });
+  const filteredAttendance = useMemo(() => {
+    const query = attendanceSearch.toLowerCase();
+    return attendance.filter((item) => {
+      const matchesSearch = `${item.nama_lengkap} ${item.nip} ${item.nama_cabang}`
+        .toLowerCase()
+        .includes(query);
+      const matchesBranch =
+        !attendanceBranchFilter ||
+        String(item.nama_cabang) === attendanceBranchFilter;
+      const matchesDateDari =
+        !attendanceDateDari ||
+        (item.tanggal && item.tanggal.slice(0, 10) >= attendanceDateDari);
+      const matchesDateSampai =
+        !attendanceDateSampai ||
+        (item.tanggal && item.tanggal.slice(0, 10) <= attendanceDateSampai);
+      return (
+        matchesSearch && matchesBranch && matchesDateDari && matchesDateSampai
+      );
+    });
+  }, [
+    attendance,
+    attendanceSearch,
+    attendanceBranchFilter,
+    attendanceDateDari,
+    attendanceDateSampai,
+  ]);
 
   // Filtered submissions
-  const filteredSubmissions = submissions.filter((item) => {
-    if (submissionFilter === "semua") return true;
-    return (item.status || "").toLowerCase() === submissionFilter.toLowerCase();
-  });
+  const filteredSubmissions = useMemo(() => {
+    const filterNorm = submissionFilter.toLowerCase();
+    return submissions.filter((item) => {
+      if (submissionFilter === "semua") return true;
+      return (item.status || "").toLowerCase() === filterNorm;
+    });
+  }, [submissions, submissionFilter]);
 
-  const pendingSubmissionsCount = submissions.filter(
-    (s) => (s.status || "").toLowerCase() === "menunggu"
-  ).length;
+  const pendingSubmissionsCount = useMemo(
+    () =>
+      submissions.filter((s) => (s.status || "").toLowerCase() === "menunggu")
+        .length,
+    [submissions],
+  );
 
   // Laporan & Rekap Bulanan helpers & computations
-  const monthsList = [
-    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-    "Juli", "Agustus", "September", "Oktober", "November", "Desember",
-  ];
-
   const handleMonthChange = (e) => {
     const val = e.target.value;
     setReportMonthFilter(val);
@@ -411,211 +488,185 @@ export default function AdminDashboard() {
     }
   };
 
-  const formatDateStrID = (val) => {
-    if (!val) return "-";
-    if (typeof val === "string") {
-      const m = val.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (m) return `${m[3]}/${m[2]}/${m[1]}`;
-    }
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return String(val);
-    const day = String(d.getDate()).padStart(2, "0");
-    const mon = String(d.getMonth() + 1).padStart(2, "0");
-    return `${day}/${mon}/${d.getFullYear()}`;
-  };
+  const sortedBranches = useMemo(
+    () =>
+      [...branches].sort((a, b) => {
+        const idxA = preferredBranchOrder.findIndex((p) =>
+          a.nama_cabang.toLowerCase().includes(p),
+        );
+        const idxB = preferredBranchOrder.findIndex((p) =>
+          b.nama_cabang.toLowerCase().includes(p),
+        );
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return a.nama_cabang.localeCompare(b.nama_cabang);
+      }),
+    [branches],
+  );
 
-  const formatTimeOnlyStr = (val) => {
-    if (!val) return "-";
-    try {
-      const d = new Date(val);
-      if (isNaN(d.getTime())) return String(val).slice(0, 5);
-      return new Intl.DateTimeFormat("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-        timeZone: "Asia/Jakarta",
-      })
-        .format(d)
-        .replace(".", ":");
-    } catch {
-      return "-";
-    }
-  };
+  const reportAttendance = useMemo(
+    () =>
+      attendance.filter((a) => {
+        const tgl = a.tanggal ? String(a.tanggal).slice(0, 10) : "";
+        if (reportDates.dari && tgl < reportDates.dari) return false;
+        if (reportDates.sampai && tgl > reportDates.sampai) return false;
+        return true;
+      }),
+    [attendance, reportDates.dari, reportDates.sampai],
+  );
 
-  const formatDisplayPeriod = (dariStr, sampaiStr) => {
-    try {
-      const d1 = new Date(dariStr + "T00:00:00");
-      const d2 = new Date(sampaiStr + "T00:00:00");
-      const day1 = d1.getDate();
-      const day2 = d2.getDate();
-      const mon1 = monthsList[d1.getMonth()];
-      const mon2 = monthsList[d2.getMonth()];
-      const yr1 = d1.getFullYear();
-      const yr2 = d2.getFullYear();
-      if (yr1 === yr2 && mon1 === mon2) {
-        return `${day1} – ${day2} ${mon2} ${yr2}`;
+  const {
+    displayBranchCards,
+    employeeRecapList,
+    attendanceRate,
+    overallSummary,
+  } = useMemo(() => {
+    const bCards = [];
+
+    let overallHadir = 0;
+    let overallTerlambat = 0;
+    let overallIzin = 0;
+    let overallSakit = 0;
+    let overallAlfa = 0;
+    let overallMenit = 0;
+    let overallPotongan = 0;
+
+    sortedBranches.forEach((br) => {
+      if (
+        reportBranchFilter !== "semua" &&
+        br.nama_cabang.toLowerCase() !== reportBranchFilter.toLowerCase()
+      ) {
+        return;
       }
-      if (yr1 === yr2) {
-        return `${day1} ${mon1} – ${day2} ${mon2} ${yr2}`;
-      }
-      return `${day1} ${mon1} ${yr1} – ${day2} ${mon2} ${yr2}`;
-    } catch {
-      return `${dariStr} s/d ${sampaiStr}`;
-    }
-  };
 
-  const preferredBranchOrder = ["pakuan", "botani", "azimar", "warung nangka", "ats", "ciapus"];
-  const sortedBranches = [...branches].sort((a, b) => {
-    const idxA = preferredBranchOrder.findIndex((p) => a.nama_cabang.toLowerCase().includes(p));
-    const idxB = preferredBranchOrder.findIndex((p) => b.nama_cabang.toLowerCase().includes(p));
-    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-    if (idxA !== -1) return -1;
-    if (idxB !== -1) return 1;
-    return a.nama_cabang.localeCompare(b.nama_cabang);
-  });
+      const brEmps = employees.filter((e) =>
+        e.penempatan?.some((p) => String(p.id_cabang) === String(br.id_cabang)),
+      );
 
-  const reportAttendance = attendance.filter((a) => {
-    const tgl = a.tanggal ? String(a.tanggal).slice(0, 10) : "";
-    if (reportDates.dari && tgl < reportDates.dari) return false;
-    if (reportDates.sampai && tgl > reportDates.sampai) return false;
-    return true;
-  });
+      const brAtts = reportAttendance.filter(
+        (a) =>
+          String(a.nama_cabang).toLowerCase() === br.nama_cabang.toLowerCase(),
+      );
 
-  const branchSummaryList = [];
-  const displayBranchCards = [];
+      let hadir = 0;
+      let terlambat = 0;
+      let izin = 0;
+      let sakit = 0;
+      let alfa = 0;
+      let menit = 0;
+      let potongan = 0;
 
-  let overallHadir = 0;
-  let overallTerlambat = 0;
-  let overallIzin = 0;
-  let overallSakit = 0;
-  let overallAlfa = 0;
-  let overallMenit = 0;
-  let overallPotongan = 0;
+      brAtts.forEach((a) => {
+        const s = (a.status_kehadiran || "").toLowerCase();
+        const m = Number(a.menit_terlambat) || 0;
+        menit += m;
+        if (s === "hadir") {
+          hadir++;
+        } else if (s === "terlambat") {
+          hadir++; // Terlambat juga terhitung sebagai hadir
+          terlambat++;
+          potongan += m * 1000;
+        } else if (s === "izin") {
+          izin++;
+          potongan += 65000;
+        } else if (s === "sakit") {
+          sakit++;
+        } else if (s === "alfa") {
+          alfa++;
+          potongan += 100000;
+        }
+      });
 
-  sortedBranches.forEach((br) => {
-    if (reportBranchFilter !== "semua" && br.nama_cabang.toLowerCase() !== reportBranchFilter.toLowerCase()) {
-      return;
-    }
+      overallHadir += hadir;
+      overallTerlambat += terlambat;
+      overallIzin += izin;
+      overallSakit += sakit;
+      overallAlfa += alfa;
+      overallMenit += menit;
+      overallPotongan += potongan;
 
-    const brEmps = employees.filter((e) =>
-      e.penempatan?.some((p) => String(p.id_cabang) === String(br.id_cabang))
-    );
-
-    const brAtts = reportAttendance.filter(
-      (a) => String(a.nama_cabang).toLowerCase() === br.nama_cabang.toLowerCase()
-    );
-
-    let hadir = 0;
-    let terlambat = 0;
-    let izin = 0;
-    let sakit = 0;
-    let alfa = 0;
-    let menit = 0;
-    let potongan = 0;
-
-    brAtts.forEach((a) => {
-      const s = (a.status_kehadiran || "").toLowerCase();
-      const m = Number(a.menit_terlambat) || 0;
-      menit += m;
-      if (s === "hadir") {
-        hadir++;
-      } else if (s === "terlambat") {
-        hadir++; // Terlambat juga terhitung sebagai hadir
-        terlambat++;
-        potongan += m * 1000;
-      } else if (s === "izin") {
-        izin++;
-        potongan += 65000;
-      } else if (s === "sakit") {
-        sakit++;
-      } else if (s === "alfa") {
-        alfa++;
-        potongan += 100000;
-      }
+      bCards.push({
+        nama_cabang: br.nama_cabang,
+        totalKaryawan:
+          brEmps.length || brAtts.length
+            ? Math.max(
+                brEmps.length,
+                new Set(brAtts.map((a) => a.nip)).size,
+              )
+            : 0,
+        records: brAtts,
+      });
     });
 
-    overallHadir += hadir;
-    overallTerlambat += terlambat;
-    overallIzin += izin;
-    overallSakit += sakit;
-    overallAlfa += alfa;
-    overallMenit += menit;
-    overallPotongan += potongan;
+    // Rekap Bulanan Per Karyawan
+    const empRecapList = employees.map((emp, idx) => {
+      const eAtts = reportAttendance.filter(
+        (a) =>
+          a.nip === emp.nip ||
+          a.nama_lengkap?.toLowerCase() === emp.nama_lengkap?.toLowerCase(),
+      );
 
-    branchSummaryList.push({
-      nama_cabang: br.nama_cabang,
-      hadir,
-      terlambat,
-      izin,
-      sakit,
-      alfa,
-      totalPotongan: potongan,
+      let hadir = 0;
+      let terlambat = 0;
+      let izin = 0;
+      let sakit = 0;
+      let alfa = 0;
+      let menit = 0;
+
+      eAtts.forEach((a) => {
+        const s = (a.status_kehadiran || "").toLowerCase();
+        const m = Number(a.menit_terlambat) || 0;
+        menit += m;
+        if (s === "hadir") {
+          hadir++;
+        } else if (s === "terlambat") {
+          hadir++; // Terlambat juga terhitung sebagai hadir
+          terlambat++;
+        } else if (s === "izin") izin++;
+        else if (s === "sakit") sakit++;
+        else if (s === "alfa") alfa++;
+      });
+
+      const totalPotongan = menit * 1000 + izin * 65000 + alfa * 100000;
+      const cabang =
+        emp.penempatan?.[0]?.nama_cabang || eAtts[0]?.nama_cabang || "Pusat";
+
+      return {
+        no: idx + 1,
+        nama_lengkap: emp.nama_lengkap,
+        cabang,
+        hadir,
+        terlambat,
+        izin,
+        sakit,
+        alfa,
+        totalPotongan,
+      };
     });
 
-    displayBranchCards.push({
-      nama_cabang: br.nama_cabang,
-      totalKaryawan: brEmps.length || brAtts.length ? Math.max(brEmps.length, new Set(brAtts.map((a) => a.nip)).size) : 0,
-      records: brAtts,
-    });
-  });
-
-  // Rekap Bulanan Per Karyawan (Sesuai Permintaan User)
-  const employeeRecapList = employees.map((emp, idx) => {
-    const eAtts = reportAttendance.filter(
-      (a) => a.nip === emp.nip || a.nama_lengkap?.toLowerCase() === emp.nama_lengkap?.toLowerCase()
-    );
-
-    let hadir = 0;
-    let terlambat = 0;
-    let izin = 0;
-    let sakit = 0;
-    let alfa = 0;
-    let menit = 0;
-
-    eAtts.forEach((a) => {
-      const s = (a.status_kehadiran || "").toLowerCase();
-      const m = Number(a.menit_terlambat) || 0;
-      menit += m;
-      if (s === "hadir") {
-        hadir++;
-      } else if (s === "terlambat") {
-        hadir++; // Terlambat juga terhitung sebagai hadir
-        terlambat++;
-      } else if (s === "izin") izin++;
-      else if (s === "sakit") sakit++;
-      else if (s === "alfa") alfa++;
-    });
-
-    const totalPotongan = menit * 1000 + izin * 65000 + alfa * 100000;
-    const cabang = emp.penempatan?.[0]?.nama_cabang || (eAtts[0]?.nama_cabang || "Pusat");
+    const totalPresensi =
+      overallHadir + overallIzin + overallSakit + overallAlfa;
+    const rate =
+      totalPresensi > 0
+        ? ((overallHadir / totalPresensi) * 100).toFixed(1)
+        : "100.0";
 
     return {
-      no: idx + 1,
-      nama_lengkap: emp.nama_lengkap,
-      cabang,
-      hadir,
-      terlambat,
-      izin,
-      sakit,
-      alfa,
-      totalPotongan,
+      displayBranchCards: bCards,
+      employeeRecapList: empRecapList,
+      attendanceRate: rate,
+      overallSummary: {
+        hadir: overallHadir,
+        terlambat: overallTerlambat,
+        izin: overallIzin,
+        sakit: overallSakit,
+        alfa: overallAlfa,
+        menitTerlambat: overallMenit,
+        totalPotongan: overallPotongan,
+      },
     };
-  });
-
-  const totalPresensi = overallHadir + overallIzin + overallSakit + overallAlfa;
-  const attendanceRate = totalPresensi > 0
-    ? ((overallHadir / totalPresensi) * 100).toFixed(1)
-    : "100.0";
-
-  const overallSummary = {
-    hadir: overallHadir,
-    terlambat: overallTerlambat,
-    izin: overallIzin,
-    sakit: overallSakit,
-    alfa: overallAlfa,
-    menitTerlambat: overallMenit,
-    totalPotongan: overallPotongan,
-  };
+  }, [sortedBranches, reportBranchFilter, employees, reportAttendance]);
 
   // Handler: Tambah Karyawan
   const handleAddEmployee = async (e) => {
@@ -1687,6 +1738,7 @@ export default function AdminDashboard() {
                           <th>Jam Pulang</th>
                           <th>Status</th>
                           <th>Potongan</th>
+                          <th style={{ textAlign: "center" }}>Aksi</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1720,11 +1772,31 @@ export default function AdminDashboard() {
                             <td style={{ fontWeight: 600, color: row.potongan > 0 ? "#b91c1c" : "#0f172a" }}>
                               {money(row.potongan)}
                             </td>
+                            <td style={{ textAlign: "center" }}>
+                              <button
+                                type="button"
+                                className="admin-btn-action-icon text-primary"
+                                style={{
+                                  color: (row.foto_masuk || row.foto_pulang) ? "#2563eb" : "#94a3b8",
+                                  borderColor: (row.foto_masuk || row.foto_pulang) ? "#bfdbfe" : "#e2e8f0",
+                                  background: (row.foto_masuk || row.foto_pulang) ? "#eff6ff" : "#f8fafc",
+                                  cursor: (row.foto_masuk || row.foto_pulang) ? "pointer" : "not-allowed",
+                                }}
+                                title={row.foto_masuk || row.foto_pulang ? "Lihat Foto Kehadiran" : "Foto presensi tidak tersedia"}
+                                disabled={!row.foto_masuk && !row.foto_pulang}
+                                onClick={() => setAttendancePhotoModal(row)}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                                  <circle cx="12" cy="13" r="4" />
+                                </svg>
+                              </button>
+                            </td>
                           </tr>
                         ))}
                         {attendance.length === 0 && (
                           <tr>
-                            <td colSpan={7} className="empty-cell">Belum ada catatan presensi.</td>
+                            <td colSpan={8} className="empty-cell">Belum ada catatan presensi.</td>
                           </tr>
                         )}
                       </tbody>
@@ -2276,13 +2348,14 @@ export default function AdminDashboard() {
                         <th>Status</th>
                         <th>Terlambat</th>
                         <th>Potongan</th>
+                        <th>Bukti Foto</th>
                         <th style={{ textAlign: "center" }}>Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredAttendance.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="empty-cell">
+                          <td colSpan={11} className="empty-cell">
                             Tidak ada rekaman presensi yang sesuai dengan filter.
                           </td>
                         </tr>
@@ -2334,18 +2407,66 @@ export default function AdminDashboard() {
                             <td style={{ fontWeight: 600, color: row.potongan > 0 ? "#b91c1c" : "#0f172a" }}>
                               {money(row.potongan)}
                             </td>
+                            <td>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                {row.foto_masuk || row.foto_pulang ? (
+                                  <button
+                                    type="button"
+                                    className="admin-btn-view-photo"
+                                    onClick={() => setAttendancePhotoModal(row)}
+                                    title="Lihat foto kehadiran karyawan"
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                                      <circle cx="12" cy="13" r="4" />
+                                    </svg>
+                                    <span>Lihat Foto ({row.foto_masuk && row.foto_pulang ? "Masuk & Pulang" : row.foto_masuk ? "Masuk" : "Pulang"})</span>
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: "11px", color: "#94a3b8" }}>Tidak ada foto</span>
+                                )}
+                                {row.indikasi_titip_absen && (
+                                  <span
+                                    className="badge-indikasi-kecurangan"
+                                    title="Peringatan: Perangkat ini digunakan oleh lebih dari 1 karyawan untuk presensi hari ini!"
+                                  >
+                                    ⚠️ Perangkat Ganda
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             <td style={{ textAlign: "center" }}>
-                              <button
-                                type="button"
-                                className="admin-btn-action-icon text-danger"
-                                title="Hapus rekaman presensi ini"
-                                onClick={() => handleDeleteSingleAttendance(row.id_absensi)}
-                              >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <polyline points="3 6 5 6 21 6" />
-                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                </svg>
-                              </button>
+                              <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                                <button
+                                  type="button"
+                                  className="admin-btn-action-icon text-primary"
+                                  style={{
+                                    color: (row.foto_masuk || row.foto_pulang) ? "#2563eb" : "#94a3b8",
+                                    borderColor: (row.foto_masuk || row.foto_pulang) ? "#bfdbfe" : "#e2e8f0",
+                                    background: (row.foto_masuk || row.foto_pulang) ? "#eff6ff" : "#f8fafc",
+                                    cursor: (row.foto_masuk || row.foto_pulang) ? "pointer" : "not-allowed",
+                                  }}
+                                  title={row.foto_masuk || row.foto_pulang ? "Lihat Bukti Foto Presensi" : "Foto presensi tidak tersedia"}
+                                  disabled={!row.foto_masuk && !row.foto_pulang}
+                                  onClick={() => setAttendancePhotoModal(row)}
+                                >
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                                    <circle cx="12" cy="13" r="4" />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-btn-action-icon text-danger"
+                                  title="Hapus rekaman presensi ini"
+                                  onClick={() => handleDeleteSingleAttendance(row.id_absensi)}
+                                >
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <polyline points="3 6 5 6 21 6" />
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  </svg>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -4762,6 +4883,292 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ================= MODAL: DETAIL & VERIFIKASI FOTO PRESENSI ================= */}
+      {attendancePhotoModal && (
+        <div
+          className="admin-modal-overlay"
+          onClick={() => setAttendancePhotoModal(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="admin-modal"
+            style={{ maxWidth: "760px", width: "92%" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                padding: "18px 24px",
+                borderBottom: "1px solid #e2e8f0",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "#0f172a" }}>
+                  Verifikasi Bukti Foto Presensi
+                </h3>
+                <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#64748b" }}>
+                  {attendancePhotoModal.nama_lengkap} ({attendancePhotoModal.nip}) &middot; Mimici {attendancePhotoModal.nama_cabang} &middot; {formatDate(attendancePhotoModal.tanggal)}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => setAttendancePhotoModal(null)}
+                title="Tutup (Esc)"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "18px" }}>
+              {/* Alert jika terdeteksi penggunaan perangkat ganda (titip absen) */}
+              {attendancePhotoModal.indikasi_titip_absen && (
+                <div
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: "10px",
+                    background: "#fef2f2",
+                    border: "1px solid #fecaca",
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                  }}
+                >
+                  <span style={{ fontSize: "22px", lineHeight: 1 }}>⚠️</span>
+                  <div style={{ fontSize: "13px", color: "#991b1b", lineHeight: 1.5 }}>
+                    <strong>Terdeteksi Indikasi Titip Absen / Berbagi Perangkat:</strong>
+                    <br />
+                    Perangkat/browser ini juga digunakan oleh karyawan lain untuk presensi pada tanggal yang sama. Mohon verifikasi kesesuaian wajah karyawan dengan teliti pada foto di bawah ini.
+                  </div>
+                </div>
+              )}
+
+              {/* Grid 2 Kolom Foto: Masuk vs Pulang */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: "18px",
+                }}
+              >
+                {/* Kartu Foto Masuk */}
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      background: "#f1f5f9",
+                      borderBottom: "1px solid #e2e8f0",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
+                      Foto Absensi Masuk
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "11.5px",
+                        fontWeight: 600,
+                        color: attendancePhotoModal.waktu_masuk ? "#166534" : "#64748b",
+                      }}
+                    >
+                      {attendancePhotoModal.waktu_masuk
+                        ? formatDateTime(attendancePhotoModal.waktu_masuk)
+                        : "Belum Absen Masuk"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      padding: "12px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      minHeight: "240px",
+                      background: "#0f172a08",
+                    }}
+                  >
+                    {attendancePhotoModal.foto_masuk ? (
+                      <img
+                        src={attendancePhotoModal.foto_masuk}
+                        alt="Foto Absensi Masuk"
+                        style={{
+                          maxWidth: "100%",
+                          maxHeight: "280px",
+                          borderRadius: "8px",
+                          objectFit: "contain",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                        }}
+                      />
+                    ) : (
+                      <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "12.5px" }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: "0 auto 8px", display: "block", opacity: 0.5 }}>
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                          <circle cx="12" cy="13" r="4" />
+                        </svg>
+                        Tidak ada rekaman foto masuk
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Kartu Foto Pulang */}
+                <div
+                  style={{
+                    background: "#f8fafc",
+                    borderRadius: "12px",
+                    border: "1px solid #e2e8f0",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      background: "#f1f5f9",
+                      borderBottom: "1px solid #e2e8f0",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#0f172a" }}>
+                      Foto Absensi Pulang
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "11.5px",
+                        fontWeight: 600,
+                        color: attendancePhotoModal.waktu_pulang ? "#166534" : "#64748b",
+                      }}
+                    >
+                      {attendancePhotoModal.waktu_pulang
+                        ? formatDateTime(attendancePhotoModal.waktu_pulang)
+                        : "Belum Absen Pulang"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      padding: "12px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      minHeight: "240px",
+                      background: "#0f172a08",
+                    }}
+                  >
+                    {attendancePhotoModal.foto_pulang ? (
+                      <img
+                        src={attendancePhotoModal.foto_pulang}
+                        alt="Foto Absensi Pulang"
+                        style={{
+                          maxWidth: "100%",
+                          maxHeight: "280px",
+                          borderRadius: "8px",
+                          objectFit: "contain",
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                        }}
+                      />
+                    ) : (
+                      <div style={{ textAlign: "center", color: "#94a3b8", fontSize: "12.5px" }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ margin: "0 auto 8px", display: "block", opacity: 0.5 }}>
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                          <circle cx="12" cy="13" r="4" />
+                        </svg>
+                        Belum ada foto kepulangan
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Metadata Audit Ringkas */}
+              <div
+                style={{
+                  background: "#f8fafc",
+                  borderRadius: "10px",
+                  padding: "12px 16px",
+                  border: "1px solid #e2e8f0",
+                  fontSize: "12px",
+                  color: "#475569",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "6px",
+                }}
+              >
+                <div>
+                  <strong>Status Presensi:</strong>{" "}
+                  <span
+                    className={`badge-status ${
+                      attendancePhotoModal.status_kehadiran === "Hadir"
+                        ? "badge-hadir"
+                        : attendancePhotoModal.status_kehadiran === "Terlambat"
+                        ? "badge-terlambat"
+                        : "badge-alfa"
+                    }`}
+                  >
+                    {attendancePhotoModal.status_kehadiran}
+                  </span>
+                  {attendancePhotoModal.menit_terlambat > 0 && (
+                    <span style={{ color: "#d97706", marginLeft: "6px", fontWeight: 600 }}>
+                      (Terlambat {attendancePhotoModal.menit_terlambat} menit)
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <strong>User Agent / Perangkat:</strong>{" "}
+                  <span style={{ fontFamily: "monospace", color: "#334155" }}>
+                    {attendancePhotoModal.device_info || "Tidak tercatat / Versi Lama"}
+                  </span>
+                </div>
+                {attendancePhotoModal.catatan && (
+                  <div>
+                    <strong>Catatan:</strong> {attendancePhotoModal.catatan}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                padding: "14px 24px",
+                borderTop: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                borderBottomLeftRadius: "16px",
+                borderBottomRightRadius: "16px",
+              }}
+            >
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                onClick={() => setAttendancePhotoModal(null)}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

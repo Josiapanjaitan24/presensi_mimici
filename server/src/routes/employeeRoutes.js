@@ -197,7 +197,8 @@ router.get(
       if (schedule) {
         const att = await pool.query(
           `SELECT a.id_absensi, a.waktu_masuk, a.waktu_pulang,
-                  a.status_absensi AS status_kehadiran, a.menit_terlambat
+                  a.status_absensi AS status_kehadiran, a.menit_terlambat,
+                  a.foto_masuk, a.foto_pulang
            FROM absensi a
            WHERE a.id_jadwal = $1`,
           [schedule.id_jadwal],
@@ -309,33 +310,38 @@ router.post(
         : 0;
       const status = late > 0 ? "Terlambat" : "Hadir";
 
+      const userAgent = (req.headers["user-agent"] || "").slice(0, 500);
+
       const result = existing.rows[0]
         ? await client.query(
             `UPDATE absensi
              SET waktu_masuk = NOW(), lintang_masuk = $1, bujur_masuk = $2,
-                 status_absensi = $3, menit_terlambat = $4, catatan = $5, diperbarui_pada = NOW()
-             WHERE id_absensi = $6
-             RETURNING id_absensi, waktu_masuk, waktu_pulang, status_absensi AS status_kehadiran, menit_terlambat`,
+                 status_absensi = $3, menit_terlambat = $4, foto_masuk = $5,
+                 device_info = $6, diperbarui_pada = NOW()
+             WHERE id_absensi = $7
+             RETURNING id_absensi, waktu_masuk, waktu_pulang, status_absensi AS status_kehadiran, menit_terlambat, foto_masuk`,
             [
               latitude,
               longitude,
               status,
               late,
-              JSON.stringify({ foto_masuk: foto }),
+              foto,
+              userAgent,
               existing.rows[0].id_absensi,
             ],
           )
         : await client.query(
-            `INSERT INTO absensi (id_jadwal, waktu_masuk, lintang_masuk, bujur_masuk, status_absensi, menit_terlambat, catatan)
-             VALUES ($1, NOW(), $2, $3, $4, $5, $6)
-             RETURNING id_absensi, waktu_masuk, waktu_pulang, status_absensi AS status_kehadiran, menit_terlambat`,
+            `INSERT INTO absensi (id_jadwal, waktu_masuk, lintang_masuk, bujur_masuk, status_absensi, menit_terlambat, foto_masuk, device_info)
+             VALUES ($1, NOW(), $2, $3, $4, $5, $6, $7)
+             RETURNING id_absensi, waktu_masuk, waktu_pulang, status_absensi AS status_kehadiran, menit_terlambat, foto_masuk`,
             [
               schedule.id_jadwal,
               latitude,
               longitude,
               status,
               late,
-              JSON.stringify({ foto_masuk: foto }),
+              foto,
+              userAgent,
             ],
           );
 
@@ -405,17 +411,21 @@ router.post(
         return sendError(res, 500, "Jadwal kerja tidak ditemukan.");
       }
 
+      const userAgent = (req.headers["user-agent"] || "").slice(0, 500);
+
       const result = await client.query(
         `UPDATE absensi
          SET waktu_pulang = NOW(), lintang_pulang = $1, bujur_pulang = $2,
-             catatan = CASE WHEN catatan IS NULL THEN $3 ELSE catatan || ' ' || $3 END,
+             foto_pulang = $3,
+             device_info = COALESCE(device_info, $4),
              diperbarui_pada = NOW()
-         WHERE id_jadwal = $4 AND waktu_masuk IS NOT NULL AND waktu_pulang IS NULL
-         RETURNING id_absensi, waktu_masuk, waktu_pulang, status_absensi AS status_kehadiran, menit_terlambat`,
+         WHERE id_jadwal = $5 AND waktu_masuk IS NOT NULL AND waktu_pulang IS NULL
+         RETURNING id_absensi, waktu_masuk, waktu_pulang, status_absensi AS status_kehadiran, menit_terlambat, foto_pulang`,
         [
           latitude,
           longitude,
-          JSON.stringify({ foto_pulang: foto }),
+          foto,
+          userAgent,
           schedule.id_jadwal,
         ],
       );
@@ -433,6 +443,7 @@ router.post(
       res.json({
         success: true,
         message: "Presensi pulang berhasil.",
+        jarak_meter: Math.round(distance),
         absensi: result.rows[0],
       });
     } catch (error) {
@@ -475,6 +486,8 @@ router.get(
               a.waktu_pulang,
               a.status_absensi AS status_kehadiran,
               a.menit_terlambat,
+              a.foto_masuk,
+              a.foto_pulang,
               CASE 
                 WHEN a.status_absensi ILIKE 'terlambat' THEN a.menit_terlambat * 1000
                 WHEN a.status_absensi ILIKE 'izin' THEN 65000

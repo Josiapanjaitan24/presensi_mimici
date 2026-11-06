@@ -16,6 +16,8 @@ import {
   isValidEmail,
   isValidPositiveId,
   isValidTimeString,
+  parsePositiveIdArray,
+  sanitizeDaysOff,
   sanitizeFilename,
 } from "./business.js";
 import {
@@ -83,6 +85,12 @@ test("validasi input keamanan (ID, tanggal, jam, email, koordinat)", () => {
 
   assert.equal(isValidCoordinate(-6.595, -90, 90), true);
   assert.equal(isValidCoordinate(95, -90, 90), false);
+
+  assert.deepEqual(parsePositiveIdArray(["1", 5, "0", -2, "abc", "12"]), [1, 5, 12]);
+  assert.deepEqual(parsePositiveIdArray(null), []);
+
+  assert.deepEqual(sanitizeDaysOff(["Senin", "InvalidDay", "Minggu"]), ["Senin", "Minggu"]);
+  assert.deepEqual(sanitizeDaysOff("bukan-array"), []);
 });
 
 test("validasi upload gambar base64 menolak SVG XSS dan menerima format aman", () => {

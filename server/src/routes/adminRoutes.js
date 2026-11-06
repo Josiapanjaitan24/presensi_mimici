@@ -1,8 +1,11 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import { pool } from "../config/database.js";
-import { autentikasi, hanyaAdmin } from "../middlewares/authMiddleware.js";
+import {
+  autentikasi,
+  hanyaAdmin,
+  signSessionToken,
+} from "../middlewares/authMiddleware.js";
 import { createRateLimiter } from "../middlewares/securityMiddleware.js";
 import {
   asyncHandler,
@@ -17,6 +20,8 @@ import {
   isValidEmail,
   isValidPositiveId,
   isValidTimeString,
+  parsePositiveIdArray,
+  sanitizeDaysOff,
 } from "../utils/business.js";
 
 const router = Router();
@@ -143,19 +148,7 @@ router.patch(
     );
 
     const updatedUser = updated.rows[0];
-
-    // Refresh token JWT
-    const token = jwt.sign(
-      {
-        id_pengguna: updatedUser.id_pengguna.toString(),
-        peran: updatedUser.peran,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRES_IN || "1h",
-        algorithm: "HS256",
-      },
-    );
+    const token = signSessionToken(updatedUser);
 
     res.json({
       success: true,
@@ -273,18 +266,7 @@ router.post(
       return sendError(res, 400, "Format tanggal bergabung tidak valid.");
     }
 
-    const validDays = [
-      "Senin",
-      "Selasa",
-      "Rabu",
-      "Kamis",
-      "Jumat",
-      "Sabtu",
-      "Minggu",
-    ];
-    const cleanDays = Array.isArray(hari_libur)
-      ? hari_libur.filter((d) => validDays.includes(d))
-      : [];
+    const cleanDays = sanitizeDaysOff(hari_libur);
 
     const client = await pool.connect();
     try {
@@ -373,16 +355,7 @@ router.patch(
     if (!Array.isArray(hari_libur)) {
       return sendError(res, 400, "Format hari libur harus berupa array.");
     }
-    const validDays = [
-      "Senin",
-      "Selasa",
-      "Rabu",
-      "Kamis",
-      "Jumat",
-      "Sabtu",
-      "Minggu",
-    ];
-    const cleanDays = hari_libur.filter((d) => validDays.includes(d));
+    const cleanDays = sanitizeDaysOff(hari_libur);
 
     const result = await pool.query(
       `UPDATE karyawan 
@@ -941,14 +914,31 @@ router.get(
               c.nama_cabang,
               a.waktu_masuk,
               a.waktu_pulang,
+              a.lintang_masuk,
+              a.bujur_masuk,
+              a.lintang_pulang,
+              a.bujur_pulang,
               a.status_absensi AS status_kehadiran,
               a.menit_terlambat,
+              a.foto_masuk,
+              a.foto_pulang,
+              a.device_info,
               CASE 
                 WHEN a.status_absensi ILIKE 'terlambat' THEN a.menit_terlambat * 1000
                 WHEN a.status_absensi ILIKE 'izin' THEN 65000
                 WHEN a.status_absensi ILIKE 'alfa' THEN 100000
                 ELSE 0
-              END AS potongan
+              END AS potongan,
+              EXISTS (
+                SELECT 1
+                FROM absensi a2
+                JOIN jadwal_kerja j2 ON j2.id_jadwal = a2.id_jadwal
+                WHERE j2.tanggal_kerja = j.tanggal_kerja
+                  AND j2.id_karyawan != j.id_karyawan
+                  AND a2.device_info IS NOT NULL
+                  AND a.device_info IS NOT NULL
+                  AND a2.device_info = a.device_info
+              ) AS indikasi_titip_absen
        FROM absensi a
        JOIN jadwal_kerja j ON j.id_jadwal = a.id_jadwal
        JOIN karyawan k ON k.id_karyawan = j.id_karyawan
@@ -986,9 +976,7 @@ router.post(
         return sendError(res, 400, "Pilih data presensi yang ingin dihapus.");
       }
 
-      const cleanIds = ids
-        .filter((id) => isValidPositiveId(id))
-        .map((id) => Number(id));
+      const cleanIds = parsePositiveIdArray(ids);
       if (cleanIds.length === 0) {
         await client.query("ROLLBACK");
         return sendError(res, 400, "ID data presensi tidak valid.");
@@ -1239,9 +1227,7 @@ router.post(
         return sendError(res, 400, "Pilih data pengajuan yang ingin dihapus.");
       }
 
-      const cleanIds = ids
-        .filter((id) => isValidPositiveId(id))
-        .map((id) => Number(id));
+      const cleanIds = parsePositiveIdArray(ids);
       if (cleanIds.length === 0) {
         await client.query("ROLLBACK");
         return sendError(res, 400, "ID data pengajuan tidak valid.");

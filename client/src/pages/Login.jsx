@@ -1,13 +1,17 @@
 import { useState, useEffect } from "react";
 import { login } from "../services/authService";
-import { saveSessionToken } from "../services/api";
+import { getClockHandDegrees, saveSessionToken } from "../services/api";
 import "./Login.css";
 
 export default function Login({ role = "karyawan", sessionError = "" }) {
-  const [identitas, setIdentitas] = useState("");
+  const [identitas, setIdentitas] = useState(
+    () => localStorage.getItem("ingat_identitas") || "",
+  );
   const [kataSandi, setKataSandi] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [ingatSaya, setIngatSaya] = useState(false);
+  const [ingatSaya, setIngatSaya] = useState(() =>
+    Boolean(localStorage.getItem("ingat_identitas")),
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -22,13 +26,7 @@ export default function Login({ role = "karyawan", sessionError = "" }) {
     return () => clearInterval(timer);
   }, []);
 
-  const seconds = currentTime.getSeconds();
-  const minutes = currentTime.getMinutes();
-  const hours = currentTime.getHours();
-
-  const secDeg = seconds * 6;
-  const minDeg = minutes * 6 + seconds * 0.1;
-  const hourDeg = (hours % 12) * 30 + minutes * 0.5;
+  const { secDeg, minDeg, hourDeg } = getClockHandDegrees(currentTime);
 
   async function handleSubmit(event) {
     event.preventDefault();

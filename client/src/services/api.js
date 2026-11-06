@@ -244,3 +244,29 @@ export function money(value) {
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 }
+
+export function getClockHandDegrees(currentTime = new Date()) {
+  const seconds = currentTime.getSeconds();
+  const minutes = currentTime.getMinutes();
+  const hours = currentTime.getHours();
+
+  return {
+    seconds,
+    minutes,
+    hours,
+    secDeg: seconds * 6,
+    minDeg: minutes * 6 + seconds * 0.1,
+    hourDeg: (hours % 12) * 30 + minutes * 0.5,
+    tanggalHariIni: currentTime.toLocaleDateString("id-ID", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }),
+    jamSekarang: currentTime.toLocaleTimeString("id-ID", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }),
+  };
+}

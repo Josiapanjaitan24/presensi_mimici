@@ -1,6 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import "./Dashboard.css";
-import { api, formatDate, formatDateTime, money, logout } from "../services/api";
+import {
+  api,
+  formatDate,
+  formatDateTime,
+  getClockHandDegrees,
+  money,
+  logout,
+} from "../services/api";
 
 export default function KaryawanDashboard() {
   const pengguna = JSON.parse(localStorage.getItem("pengguna") || "null");
@@ -29,7 +36,6 @@ export default function KaryawanDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [attendanceHistory, setAttendanceHistory] = useState([]);
   const [submissions, setSubmissions] = useState([]);
-  const [, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionMessage, setActionMessage] = useState("");
 
@@ -72,7 +78,6 @@ export default function KaryawanDashboard() {
   // Load employee data from backend
   const loadData = async () => {
     try {
-      setLoading(true);
       const [dash, att, sub] = await Promise.all([
         api.get("/employee/dashboard"),
         api.get("/employee/attendance"),
@@ -84,8 +89,6 @@ export default function KaryawanDashboard() {
       setError("");
     } catch (err) {
       setError(err.message || "Gagal memuat data karyawan.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -97,27 +100,14 @@ export default function KaryawanDashboard() {
     logout("karyawan");
   }
 
-  // Indonesian date & time
-  const tanggalHariIni = currentTime.toLocaleDateString("id-ID", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-
-  const jamSekarang = currentTime.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-
-  const seconds = currentTime.getSeconds();
-  const minutes = currentTime.getMinutes();
-  const hours = currentTime.getHours();
-
-  const secDeg = seconds * 6;
-  const minDeg = minutes * 6 + seconds * 0.1;
-  const hourDeg = (hours % 12) * 30 + minutes * 0.5;
+  const {
+    hours,
+    secDeg,
+    minDeg,
+    hourDeg,
+    tanggalHariIni,
+    jamSekarang,
+  } = getClockHandDegrees(currentTime);
 
   const placement = dashboardData?.penempatan;
   const todayAttendance = dashboardData?.absensi_hari_ini;
@@ -127,11 +117,21 @@ export default function KaryawanDashboard() {
   const isPresensiBelumDibuka = Boolean(dashboardData?.presensi_dibuka === false || hours < 7);
 
   // Summary counts for history (Terlambat juga dihitung sebagai kehadiran)
-  const totalHadir = attendanceHistory.filter(
-    (a) => a.status_kehadiran === "Hadir" || a.status_kehadiran === "Terlambat"
-  ).length;
-  const totalTerlambat = attendanceHistory.filter((a) => a.status_kehadiran === "Terlambat").length;
-  const totalPotongan = attendanceHistory.reduce((acc, curr) => acc + (Number(curr.potongan) || 0), 0);
+  const { totalHadir, totalTerlambat, totalPotongan } = useMemo(() => {
+    let hadir = 0;
+    let terlambat = 0;
+    let potongan = 0;
+    for (const item of attendanceHistory) {
+      if (item.status_kehadiran === "Hadir" || item.status_kehadiran === "Terlambat") {
+        hadir += 1;
+      }
+      if (item.status_kehadiran === "Terlambat") {
+        terlambat += 1;
+      }
+      potongan += Number(item.potongan) || 0;
+    }
+    return { totalHadir: hadir, totalTerlambat: terlambat, totalPotongan: potongan };
+  }, [attendanceHistory]);
 
   return (
     <div className="emp-portal-layout">
@@ -933,13 +933,37 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
       // 1. Capture snapshot to canvas
       let photoDataUrl = "";
       const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 480;
+      // Resolusi optimal 480x360 untuk menghemat ukuran payload dan storage (hanya ~20-30 KB per foto)
+      canvas.width = 480;
+      canvas.height = 360;
       const ctx = canvas.getContext("2d");
 
       if (!useFallbackCanvas && videoRef.current && videoRef.current.videoWidth > 0) {
         ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        photoDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+
+        // Watermark audit bar
+        ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+        ctx.fillRect(0, 310, canvas.width, 50);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "left";
+        const empLabel = `PRESENSI MIMICI - CABANG ${placement?.nama_cabang ? placement.nama_cabang.toUpperCase() : ""}`;
+        ctx.fillText(empLabel, 16, 328);
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "10.5px monospace";
+        const nowStr =
+          new Date().toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          }) +
+          " " +
+          new Date().toLocaleTimeString("id-ID");
+        ctx.fillText(`${nowStr} • VERIFIKASI WAJAH`, 16, 346);
+
+        photoDataUrl = canvas.toDataURL("image/jpeg", 0.70);
       } else {
         // Fallback camera simulation frame with silhouette and timestamp
         ctx.fillStyle = "#0f172a";
@@ -951,27 +975,27 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
         grad.addColorStop(1, "#2563eb");
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(320, 210, 110, 0, Math.PI * 2);
+        ctx.arc(240, 160, 80, 0, Math.PI * 2);
         ctx.fill();
 
         // Silhouette head & shoulders
         ctx.fillStyle = "#ffffff";
         ctx.beginPath();
-        ctx.arc(320, 180, 50, 0, Math.PI * 2);
+        ctx.arc(240, 135, 38, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(320, 310, 80, Math.PI, Math.PI * 2);
+        ctx.arc(240, 235, 60, Math.PI, Math.PI * 2);
         ctx.fill();
 
         // Text banner
         ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-        ctx.fillRect(0, 420, canvas.width, 60);
+        ctx.fillRect(0, 310, canvas.width, 50);
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 15px sans-serif";
+        ctx.font = "bold 12px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(`PRESENSI MIMICI - CABANG ${placement.nama_cabang.toUpperCase()} - ${new Date().toLocaleTimeString("id-ID")}`, 320, 455);
+        ctx.fillText(`PRESENSI MIMICI - CABANG ${placement.nama_cabang.toUpperCase()} - ${new Date().toLocaleTimeString("id-ID")}`, 240, 340);
 
-        photoDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        photoDataUrl = canvas.toDataURL("image/jpeg", 0.70);
       }
 
       setCapturedPhoto(photoDataUrl);
@@ -999,14 +1023,8 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
         longitude = position.coords.longitude;
         accuracy = position.coords.accuracy || 10;
       } catch (geoErr) {
-        // Fallback in desktop/headless environments without GPS chip to branch location
         console.warn("GPS Geolocation lookup:", geoErr);
-        if (placement?.latitude && placement?.longitude) {
-          latitude = placement.latitude;
-          longitude = placement.longitude;
-        } else {
-          throw new Error("Izin lokasi GPS diperlukan untuk memvalidasi keberadaan di cabang.");
-        }
+        throw new Error("Izin lokasi GPS diperlukan untuk memvalidasi keberadaan di cabang.");
       }
 
       setGpsStatus(`Lokasi terdeteksi. Memverifikasi radius cabang ${placement.nama_cabang}...`);
@@ -1018,7 +1036,6 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
         longitude,
         accuracy,
         foto: photoDataUrl,
-        id_jadwal: placement.id_jadwal,
       };
 
       const response = await api.post(endpoint, payload);
@@ -1059,6 +1076,27 @@ function AttendanceCameraPage({ placement, mode, onBack, onSuccess }) {
           <p style={{ margin: 0, fontSize: "13.5px", color: "#64748b" }}>
             Cabang ini telah ditentukan oleh Administrator. Posisikan wajah Anda di dalam kamera, lalu tekan tombol <strong>Ambil Foto</strong>.
           </p>
+          <div
+            style={{
+              margin: "12px auto 0",
+              maxWidth: "540px",
+              background: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              borderRadius: "8px",
+              padding: "8px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "12px",
+              color: "#1e40af",
+              textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: "16px" }}>🔒</span>
+            <span>
+              <strong>Audit Wajah Anti-Kecurangan:</strong> Presensi wajib dilakukan sendiri oleh karyawan bersangkutan. Wajah dan data perangkat dicatat secara otomatis untuk diverifikasi oleh Admin.
+            </span>
+          </div>
         </div>
 
         {/* Viewfinder Preview Box */}

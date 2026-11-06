@@ -4,6 +4,7 @@ import { pool } from "../config/database.js";
 import { isValidPositiveId } from "../utils/business.js";
 
 const revokedTokens = new Map();
+const MAX_REVOKED_TOKENS = 5000;
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(String(token)).digest("hex");
@@ -16,6 +17,25 @@ function cleanupRevokedTokens(nowMs = Date.now()) {
       revokedTokens.delete(digest);
     }
   }
+  while (revokedTokens.size >= MAX_REVOKED_TOKENS) {
+    const oldestKey = revokedTokens.keys().next().value;
+    if (!oldestKey) break;
+    revokedTokens.delete(oldestKey);
+  }
+}
+
+export function signSessionToken(pengguna) {
+  return jwt.sign(
+    {
+      id_pengguna: pengguna.id_pengguna.toString(),
+      peran: pengguna.peran,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || "1h",
+      algorithm: "HS256",
+    },
+  );
 }
 
 export function revokeToken(token, expSeconds) {
@@ -81,7 +101,7 @@ export async function autentikasi(req, res, next) {
     }
 
     const result = await pool.query(
-      "SELECT id_pengguna, peran, status_akun FROM pengguna WHERE id_pengguna = $1",
+      "SELECT id_pengguna, nama_pengguna, peran, status_akun FROM pengguna WHERE id_pengguna = $1",
       [payload.id_pengguna],
     );
     const pengguna = result.rows[0];
@@ -95,6 +115,7 @@ export async function autentikasi(req, res, next) {
     req.token = token;
     req.pengguna = {
       id_pengguna: pengguna.id_pengguna.toString(),
+      nama_pengguna: pengguna.nama_pengguna,
       peran: pengguna.peran,
       status_akun: pengguna.status_akun,
       exp: payload.exp,

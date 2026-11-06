@@ -1,6 +1,7 @@
 export const POTONGAN_DEFAULT = Object.freeze({ izin: 65000, sakit: 0, alfa: 100000, terlambat: 1000 });
 export const ALLOWED_ATTENDANCE_STATUS = Object.freeze(["Hadir", "Terlambat", "Izin", "Sakit", "Alfa", "Libur"]);
 export const ALLOWED_IMAGE_MIME_TYPES = Object.freeze(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+export const VALID_DAYS_ID = Object.freeze(["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]);
 
 export function getJakartaTime(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -79,6 +80,16 @@ export function isValidCoordinate(value, min, max) {
 
 export function isValidPositiveId(value) {
   return /^[1-9]\d*$/.test(String(value ?? "").trim());
+}
+
+export function parsePositiveIdArray(ids) {
+  if (!Array.isArray(ids)) return [];
+  return ids.filter((id) => isValidPositiveId(id)).map((id) => Number(id));
+}
+
+export function sanitizeDaysOff(days) {
+  if (!Array.isArray(days)) return [];
+  return days.filter((day) => VALID_DAYS_ID.includes(day));
 }
 
 export function isValidTimeString(value) {

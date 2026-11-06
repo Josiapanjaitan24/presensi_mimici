@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { POTONGAN_DEFAULT } from "./business.js";
 
 /**
  * Builds the comprehensive Excel report for Mimici Coffee & Space.
@@ -217,7 +218,10 @@ export async function buildExcelWorkbook(pool, dari, sampai) {
   // Calculate total potongan per employee
   for (const empId in employeeSummaryMap) {
     const e = employeeSummaryMap[empId];
-    e.totalPotongan = e.totalMenitTerlambat * 1000 + e.hariIzin * 65000 + e.hariAlfa * 100000;
+    e.totalPotongan =
+      e.totalMenitTerlambat * POTONGAN_DEFAULT.terlambat +
+      e.hariIzin * POTONGAN_DEFAULT.izin +
+      e.hariAlfa * POTONGAN_DEFAULT.alfa;
   }
 
   const employeeSummaryList = Object.values(employeeSummaryMap);
@@ -258,13 +262,16 @@ export async function buildExcelWorkbook(pool, dari, sampai) {
       else if (s === "terlambat") {
         hadir++; // Terlambat juga terhitung sebagai hadir
         terlambat++;
-        totalDendaTelat += (a.menit_terlambat || 0) * 1000;
+        totalDendaTelat += (a.menit_terlambat || 0) * POTONGAN_DEFAULT.terlambat;
       } else if (s === "izin") izin++;
       else if (s === "sakit") sakit++;
       else if (s === "alfa") alfa++;
     });
 
-    const totalPotongan = totalDendaTelat + izin * 65000 + alfa * 100000;
+    const totalPotongan =
+      totalDendaTelat +
+      izin * POTONGAN_DEFAULT.izin +
+      alfa * POTONGAN_DEFAULT.alfa;
 
     return {
       branch: br,
